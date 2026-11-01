@@ -12,6 +12,14 @@ params.randomness=0;for(let i=0;i<3;i++){const baseC=centroid(rings[i]),n=refs.r
 console.log('PASS: real contours, range validation, independent floor variation, fixed connected floors, whole slab unions, parameter extremes.');
 `,context);
 const html=fs.readFileSync(__dirname+'/dist/index.html','utf8');assert(!/<(?:script|img)[^>]+src\s*=|<link[^>]+href\s*=/i.test(html),'HTML has external resources');console.log('PASS: standalone HTML has all dependencies and source geometry embedded.');
+vm.runInContext(`
+params.extraAfter=[5,10];params.extraDistance=6;
+for(const [floor,expected] of [[4,0],[5,6],[6,6],[9,6],[10,12],[11,12]])if(extraSetbackAt(floor)!==expected)throw Error('Extra setback triggers on wrong transition');
+const sample=[[-30,-20],[30,-20],[30,20],[-30,20]];
+for(const distance of [6,12]){const changed=extraSetbackRing(sample,[1,0],distance);if(Math.abs(changed[0][0]-sample[0][0]-distance)>1e-9)throw Error('Extra metres incorrect');if(changed[1][0]!==sample[1][0])throw Error('Opposite side moved');}
+params.extraAfter=[];params.extraDistance=0;
+console.log('PASS: after-floor triggers, cumulative inheritance, exact extra metres and fixed opposite edge.');
+`,context);
 
 // Regression: inspect the whole closed curve, including the last-to-first join.
 const curvedContext={console};vm.createContext(curvedContext);vm.runInContext(`const baseModes=['curve'];const params={};const refs=[];`+functions+`
