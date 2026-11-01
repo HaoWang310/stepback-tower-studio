@@ -44,9 +44,9 @@ const footprints=[[[-20,-20],[20,-20],[20,20],[-20,20]]];
 towerRing=()=>footprints[0];params.floors=[3];params.rise=3.6;params.thickness=.5;params.fasciaHeight=.8;params.glassSetback=.6;params.frameSpacing=3;params.windowTrim=.12;
 let floorGroups=[],allPolys=[];
 function runFacade(){floorGroups=Array.from({length:3},()=>new THREE.Group());allPolys=Array.from({length:3},()=>({linked:false,polygons:[{outer:footprints[0],holes:[]}]}));addArchitecturalDetails();return floorGroups.flatMap(g=>g.children.filter(m=>m.userData.detail==='trim'));}
-let trims=runFacade();if(trims.length!==4)throw Error('Missing upper/lower trims on window intervals');
+let trims=runFacade();if(floorGroups[0].children.some(m=>m.userData.detail==='fascia'))throw Error('Ground slab must have no fascia');if(floorGroups.slice(1).some(g=>!g.children.some(m=>m.userData.detail==='fascia')))throw Error('Upper slab fascia missing');if(trims.length!==4)throw Error('Missing upper/lower trims on window intervals');
 if(trims.some(m=>m.geometry.attributes.position.count===0||m.material.color.getHex()!==0x151517))throw Error('Empty trim or wrong color');
-if(Math.abs(trims[0].position.z-.65)>1e-8||Math.abs(trims[1].position.z+params.windowTrim-3.45)>1e-8)throw Error('Trim hidden behind fascia');
+if(Math.abs(trims[0].position.z-.5)>1e-8||Math.abs(trims[1].position.z+params.windowTrim-3.45)>1e-8)throw Error('Trim hidden behind fascia');
 params.windowTrim=.4;trims=runFacade();if(trims.some(m=>m.userData.detailHeight!==.4))throw Error('Size did not change trim geometry');
 params.windowTrim=0;if(runFacade().length)throw Error('Zero must hide trims');
 console.log('PASS: facade creates two black window trims, visible between fascia, size changes geometry, zero hides them.');
