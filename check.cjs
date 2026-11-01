@@ -2,6 +2,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');const shell=fs.
 context.rings=curves.filter(c=>c.closed).map(c=>c.points);vm.runInContext(`
 const eq=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 if(parseLevels('5,10-12').join(',')!=='5,10,11,12')throw Error('level parsing');
+if(parseLevels('0').length||parseLevels('0, 0,').length||parseLevels('0,10').join(',')!=='10')throw Error('zero must disable connections without blocking updates');
 let invalid=false;try{parseLevels('12-10')}catch(e){invalid=true}if(!invalid)throw Error('range validation');
 for(const r of rings){if(union([r]).length!==1)throw Error('invalid source');const a=towerRing(r,0,5,false),b=towerRing(r,0,6,false);if(eq(a,b))throw Error('random floors repeat');}
 const fixedA=rings.map((r,i)=>towerRing(r,i,9,true));params.randomness=7;params.seed=231;const fixedB=rings.map((r,i)=>towerRing(r,i,9,true));if(!eq(fixedA,fixedB))throw Error('connected floors changed with seed or randomness');
