@@ -38,8 +38,8 @@ console.log('PASS: curved setbacks remain smooth at every vertex and the closing
 vm.runInContext(`
 params.floors=[20];params.extraAfter=[];params.extraDistance=0;params.randomness=0;params.attract=.9;
 const large=[[-30,-30],[30,-30],[30,30],[-30,30]],small=large.map(p=>p.map(v=>v/2));
-if(Math.abs(setbackBounds(large,0).maxDepth/2-setbackBounds(small,0).maxDepth)>1e-8)throw Error('Boundary does not scale with footprint');
-for(const base of [large,small,rings[0]]){const bounds=setbackBounds(base,0);params.step=100;const limited=towerRing(base,0,19,false);params.step=bounds.maxStrength;const atLimit=towerRing(base,0,19,false);if(JSON.stringify(limited)!==JSON.stringify(atLimit))throw Error('Large strength exceeds automatic boundary');if(bounds.maxDepth>.24*bounds.width+1e-8)throw Error('Depth enters clamped-scale translation regime');}
+if(Math.abs(setbackBounds(large,0).maxStep/2-setbackBounds(small,0).maxStep)>1e-8)throw Error('Boundary does not scale with footprint');
+for(const base of [large,small,rings[0]]){const bounds=setbackBounds(base,0);params.step=100;const limited=towerRing(base,0,19,false);params.step=bounds.maxStep;const atLimit=towerRing(base,0,19,false);if(JSON.stringify(limited)!==JSON.stringify(atLimit))throw Error('Large strength exceeds automatic boundary');if(bounds.maxDepth>.24*bounds.width+1e-8)throw Error('Depth enters clamped-scale translation regime');}
 console.log('PASS: setback boundary scales with footprint and excess strength cannot continue translating upper floors.');
 `,context);
 
