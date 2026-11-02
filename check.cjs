@@ -63,3 +63,17 @@ params.windowTrim=.4;trims=runFacade();if(trims.some(m=>m.userData.detailHeight!
 params.windowTrim=0;if(runFacade().length)throw Error('Zero must hide trims');
 console.log('PASS: facade creates two black window trims, visible between fascia, size changes geometry, zero hides them.');
 `,context);
+
+// Terrace landscape must occupy supported, uncovered floor area and stay deterministic.
+vm.runInContext(`
+params.greenery=true;params.plantDensity=65;params.plantWidth=.65;params.plantHeight=1.1;params.seed=6;params.thickness=.5;params.rise=3.6;
+const plantedBase=[[-20,-20],[20,-20],[20,20],[-20,20]],plantedUpper=[[-18,-18],[18,-18],[18,18],[-18,18]];
+allPolys=[{linked:false,polygons:[{outer:plantedBase,holes:[]}]},{linked:false,polygons:[{outer:plantedUpper,holes:[]}]}];floorGroups=[new THREE.Group(),new THREE.Group()];
+const firstLayout=terracePlantLayout(0);if(!firstLayout.length)throw Error('No terrace planting on wide exposed deck');if(JSON.stringify(firstLayout)!==JSON.stringify(terracePlantLayout(0)))throw Error('Planting changes without parameter changes');
+const isInside=(p,r)=>ClipperLib.Clipper.PointInPolygon({X:Math.round(p[0]*SCALE),Y:Math.round(p[1]*SCALE)},toPath(r))!==0;
+addTerracePlanting();const landscape=floorGroups[0].children.find(m=>m.userData.detail==='landscape');if(!landscape)throw Error('No landscape mesh');const plantPosition=landscape.geometry.attributes.position;
+for(let i=0;i<plantPosition.count;i++){const p=[plantPosition.getX(i),plantPosition.getY(i)];if(!isInside(p,plantedBase)||isInside(p,plantedUpper))throw Error('Plant or planter outside exposed terrace');if(plantPosition.getZ(i)<params.thickness)throw Error('Planting below slab');}
+const baseMax=Math.max(...Array.from({length:plantPosition.count},(_,i)=>plantPosition.getZ(i)));params.plantHeight=1.8;floorGroups=[new THREE.Group(),new THREE.Group()];addTerracePlanting();const tallPosition=floorGroups[0].children[0].geometry.attributes.position;if(Math.max(...Array.from({length:tallPosition.count},(_,i)=>tallPosition.getZ(i)))<=baseMax)throw Error('Height does not affect landscape');
+params.plantDensity=20;const sparse=terracePlantLayout(0).length;params.plantDensity=100;if(terracePlantLayout(0).length<=sparse)throw Error('Density has no effect');params.greenery=false;if(terracePlantLayout(0).length)throw Error('Landscape toggle does not hide');params.greenery=true;params.plantDensity=0;if(terracePlantLayout(0).length)throw Error('Zero density must hide planting');params.plantDensity=65;allPolys[0].linked=true;if(terracePlantLayout(0).length)throw Error('Bridge must remain clear');allPolys[0].linked=false;allPolys[1].polygons=allPolys[0].polygons;if(terracePlantLayout(0).length)throw Error('No exposed terrace but plants generated');if(terracePlantLayout(1).length)throw Error('Roof should stay clear');
+console.log('PASS: landscape containment, deterministic placement, density, height, off, bridge clearance and no exposed deck.');
+`,context);
