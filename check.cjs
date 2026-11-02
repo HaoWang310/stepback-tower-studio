@@ -43,6 +43,10 @@ for(const base of [large,small,rings[0]]){const bounds=setbackBounds(base,0);par
 console.log('PASS: setback boundary scales with footprint and excess strength cannot continue translating upper floors.');
 `,context);
 
+vm.runInContext(`
+params.directionMode='climate';params.retreatAzimuth=0;params.northAngle=0;params.step=.5;const northRing=towerRing(rings[0],0,10,false);const savedRefs=JSON.stringify(refs);refs.splice(0,refs.length,[[1000,1000],[1001,1001]]);if(JSON.stringify(northRing)!==JSON.stringify(towerRing(rings[0],0,10,false)))throw Error('Climate direction depends on reference');params.retreatAzimuth=90;if(JSON.stringify(northRing)===JSON.stringify(towerRing(rings[0],0,10,false)))throw Error('Climate azimuth has no geometry effect');refs.splice(0,refs.length,...JSON.parse(savedRefs));params.directionMode='reference';console.log('PASS: climate retreat independent of reference; azimuth changes geometry.');
+`,context);
+
 // Regression: the facade builder must actually add both trims and respect size.
 vm.runInContext(fs.readFileSync(__dirname+'/three.min.js','utf8'),context);
 vm.runInContext(shell.slice(shell.indexOf('function addWindowTrims('),shell.indexOf('function setGrowth(')),context);
