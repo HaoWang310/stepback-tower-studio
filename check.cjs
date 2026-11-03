@@ -78,3 +78,12 @@ const baseMax=Math.max(...Array.from({length:plantPosition.count},(_,i)=>plantPo
 params.plantDensity=20;const sparse=terracePlantLayout(0).length;params.plantDensity=100;if(terracePlantLayout(0).length<=sparse)throw Error('Density has no effect');params.greenery=false;if(terracePlantLayout(0).length)throw Error('Landscape toggle does not hide');params.greenery=true;params.plantDensity=0;if(terracePlantLayout(0).length)throw Error('Zero density must hide planting');params.plantDensity=65;allPolys[0].linked=true;if(terracePlantLayout(0).length)throw Error('Bridge must remain clear');allPolys[0].linked=false;allPolys[1].polygons=allPolys[0].polygons;if(terracePlantLayout(0).length)throw Error('No exposed terrace but plants generated');if(terracePlantLayout(1).length)throw Error('Roof should stay clear');
 console.log('PASS: landscape containment, deterministic placement, density, height, off, bridge clearance and no exposed deck.');
 `,context);
+
+vm.runInContext(`
+// Density and height edits reuse the same clipped planting layout.
+params.greenery=true;params.plantDensity=65;params.plantWidth=.65;params.plantContinuity=92;
+allPolys=[{linked:false,polygons:[{outer:plantedBase,holes:[]}]},{linked:false,polygons:[{outer:plantedUpper,holes:[]}]}];landscapeLayoutCache.clear();
+const originalLayoutBuilder=computeTerracePlantLayout;let layoutComputations=0;computeTerracePlantLayout=f=>{layoutComputations++;return originalLayoutBuilder(f)};
+terracePlantLayout(0);for(let i=0;i<8;i++){params.plantHeight=.3+i*.15;params.plantDensity=30+i*7;terracePlantLayout(0)}if(layoutComputations!==1)throw Error('Height/density reclips geometry');params.plantWidth=.85;terracePlantLayout(0);if(layoutComputations!==2)throw Error('Width does not invalidate layout');computeTerracePlantLayout=originalLayoutBuilder;
+console.log('PASS: cached planting layout reused for density and height; width invalidates correctly.');
+`,context);
