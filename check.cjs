@@ -69,6 +69,7 @@ vm.runInContext(`
 params.greenery=true;params.plantDensity=65;params.plantWidth=.65;params.plantHeight=1.1;params.seed=6;params.thickness=.5;params.rise=3.6;
 const plantedBase=[[-20,-20],[20,-20],[20,20],[-20,20]],plantedUpper=[[-18,-18],[18,-18],[18,18],[-18,18]];
 allPolys=[{linked:false,polygons:[{outer:plantedBase,holes:[]}]},{linked:false,polygons:[{outer:plantedUpper,holes:[]}]}];floorGroups=[new THREE.Group(),new THREE.Group()];
+params.plantContinuity=100;const fullBand=terracePlantLayout(0),bandArea=a=>(a.bands||[]).reduce((sum,r)=>sum+area(r),0);params.plantContinuity=20;const brokenBand=terracePlantLayout(0);if(Math.abs(bandArea(fullBand))<=Math.abs(bandArea(brokenBand)))throw Error('Continuity must increase planted ribbon coverage');params.plantContinuity=100;
 const firstLayout=terracePlantLayout(0);if(!firstLayout.length)throw Error('No terrace planting on wide exposed deck');if(JSON.stringify(firstLayout)!==JSON.stringify(terracePlantLayout(0)))throw Error('Planting changes without parameter changes');
 const isInside=(p,r)=>ClipperLib.Clipper.PointInPolygon({X:Math.round(p[0]*SCALE),Y:Math.round(p[1]*SCALE)},toPath(r))!==0;
 addTerracePlanting();const landscape=floorGroups[0].children.find(m=>m.userData.detail==='landscape');if(!landscape)throw Error('No landscape mesh');const plantPosition=landscape.geometry.attributes.position;
