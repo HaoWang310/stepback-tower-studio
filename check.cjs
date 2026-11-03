@@ -87,3 +87,8 @@ const originalLayoutBuilder=computeTerracePlantLayout;let layoutComputations=0;c
 terracePlantLayout(0);for(let i=0;i<8;i++){params.plantHeight=.3+i*.15;params.plantDensity=30+i*7;terracePlantLayout(0)}if(layoutComputations!==1)throw Error('Height/density reclips geometry');params.plantWidth=.85;terracePlantLayout(0);if(layoutComputations!==2)throw Error('Width does not invalidate layout');computeTerracePlantLayout=originalLayoutBuilder;
 console.log('PASS: cached planting layout reused for density and height; width invalidates correctly.');
 `,context);
+
+vm.runInContext(shell.slice(shell.indexOf('function addIterationEnvelope('),shell.indexOf('function addWindowTrims(')),context);
+vm.runInContext(`
+floorGroups=[new THREE.Group(),new THREE.Group()];addIterationEnvelope();const previewMeshes=floorGroups[0].children;if(!previewMeshes.length||previewMeshes.some(m=>m.userData.detail!=='glass'))throw Error('Fast iteration envelope missing or decorative details generated');if(previewMeshes.some(m=>m.geometry.attributes.position.count!==48*6))throw Error('Fast envelope resolution changed');console.log('PASS: fast iteration display builds glazing without decorative geometry.');
+`,context);
