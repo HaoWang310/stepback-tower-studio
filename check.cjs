@@ -92,3 +92,13 @@ vm.runInContext(shell.slice(shell.indexOf('function addIterationEnvelope('),shel
 vm.runInContext(`
 floorGroups=[new THREE.Group(),new THREE.Group()];addIterationEnvelope();const previewMeshes=floorGroups[0].children;if(!previewMeshes.length||previewMeshes.some(m=>m.userData.detail!=='glass'))throw Error('Fast iteration envelope missing or decorative details generated');if(previewMeshes.some(m=>m.geometry.attributes.position.count!==48*6))throw Error('Fast envelope resolution changed');console.log('PASS: fast iteration display builds glazing without decorative geometry.');
 `,context);
+
+vm.runInContext(shell.slice(shell.indexOf('function floorRotationAngle('),shell.indexOf('function baseTowerRing(')),context);
+vm.runInContext(`
+params.rotationEnabled=true;params.rotationFloors=[5,10];params.rotationAngle=10;params.rotationTarget='all';params.directionMode='climate';params.retreatAzimuth=0;params.step=.5;params.randomness=0;params.extraAfter=[5,10];params.extraDistance=1;params.floors=[20,20];
+for(const [floor,angle] of [[0,0],[3,0],[4,10],[8,10],[9,20],[19,20]])if(floorRotationAngle(0,floor)!==angle)throw Error('Rotation inheritance off by one');
+const rotationBase=[[-30,-30],[30,-30],[30,30],[-30,30]],rotationCenter=centroid(rotationBase);for(const floor of [0,4,9,19]){const raw=baseTowerRing(rotationBase,0,floor,false),turned=towerRing(rotationBase,0,floor,false),expected=rotateFloorRing(raw,rotationCenter,floorRotationAngle(0,floor));if(JSON.stringify(turned)!==JSON.stringify(expected))throw Error('Rotation not applied after retreat');if(Math.abs(area(raw)-area(turned))>1e-7)throw Error('Rotation changes area');for(let i=0;i<raw.length;i++)if(Math.abs(length(sub(raw[i],rotationCenter))-length(sub(turned[i],rotationCenter)))>1e-8)throw Error('Center drifts');}
+params.rotationTarget='1';if(floorRotationAngle(0,9)!==0||floorRotationAngle(1,9)!==20)throw Error('Tower targeting failed');params.rotationAngle=-10;if(floorRotationAngle(1,9)!==-20)throw Error('Negative rotation failed');params.rotationTarget='all';params.rotationAngle=10;
+const ra=towerRing(rings[0],0,9,true),rb=towerRing(rings[1],1,9,true),joined=union([ra,rb,bridgeRibbon(ra,rb,.44)]);if(joined.length!==1)throw Error('Rotated bridge not unified');params.rotationEnabled=false;if(JSON.stringify(towerRing(rotationBase,0,9,false))!==JSON.stringify(baseTowerRing(rotationBase,0,9,false)))throw Error('Off must preserve original shape');params.rotationFloors=[];params.extraAfter=[];params.extraDistance=0;
+console.log('PASS: rotation triggers, cumulative inheritance, fixed center, area, sign, tower target, setback composition, bridge union and off.');
+`,context);
