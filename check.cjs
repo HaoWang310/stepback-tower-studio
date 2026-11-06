@@ -102,3 +102,17 @@ params.rotationTarget='1';if(floorRotationAngle(0,9)!==0||floorRotationAngle(1,9
 const ra=towerRing(rings[0],0,9,true),rb=towerRing(rings[1],1,9,true),joined=union([ra,rb,bridgeRibbon(ra,rb,.44)]);if(joined.length!==1)throw Error('Rotated bridge not unified');params.rotationEnabled=false;if(JSON.stringify(towerRing(rotationBase,0,9,false))!==JSON.stringify(baseTowerRing(rotationBase,0,9,false)))throw Error('Off must preserve original shape');params.rotationFloors=[];params.extraAfter=[];params.extraDistance=0;
 console.log('PASS: rotation triggers, cumulative inheritance, fixed center, area, sign, tower target, setback composition, bridge union and off.');
 `,context);
+
+const climateLocal=fs.readFileSync(__dirname+'/climate.js','utf8');
+vm.runInContext(`const cs={displayFloors:[1,3],displayGround:true,displayRoof:false,groundSize:12,groundSide:'south',density:22,target:'both'};`+climateLocal.slice(climateLocal.indexOf('let localSurfaceCache='),climateLocal.indexOf('function windAt('))+`
+params.greenery=false;
+allPolys=Array.from({length:4},(_,f)=>({linked:false,polygons:[{outer:[[-20+f*2,-20+f*2],[20-f*2,-20+f*2],[20-f*2,20-f*2],[-20+f*2,20-f*2]],holes:[]}]}));
+const localPatches=localAnalysisSurfaces();
+if(localPatches.some(p=>p.kind==='terrace'&&![0,2].includes(p.layer)))throw Error('Unselected floor or roof painted');
+if(![0,2].every(f=>localPatches.some(p=>p.layer===f)))throw Error('Selected terrace missing');
+for(const p of localPatches)for(const t of p.triangles){const c=t[0].map((_,i)=>(t[0][i]+t[1][i]+t[2][i])/3);if(p.kind==='ground'&&c[1]>=-20)throw Error('Ground patch overlaps base');if(p.kind==='terrace'){const h=20-(p.layer+1)*2;if(Math.abs(c[0])<h&&Math.abs(c[1])<h)throw Error('Terrace patch covers upper slab');}}
+const beforeLocal=JSON.stringify(localAnalysisSamples());cs.target='ground';if(JSON.stringify(localAnalysisSamples())!==beforeLocal)throw Error('Display region changed with evaluation target');
+cs.displayRoof=true;if(!localAnalysisSurfaces().some(p=>p.layer===3))throw Error('Roof toggle failed');cs.displayGround=false;if(localAnalysisSurfaces().some(p=>p.kind==='ground'))throw Error('Ground toggle failed');
+const knownValues=[{p:[0,0],hours:0},{p:[10,0],hours:10}];if(interpolateLocalValue([0,0],knownValues,'hours')!==0||Math.abs(interpolateLocalValue([5,0],knownValues,'hours')-5)>1e-9)throw Error('Interpolation changed known data');
+console.log('PASS: selected exposed terraces, clean roof default, bounded ground, independent display/evaluation and real-value interpolation.');
+`,context);
