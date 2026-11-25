@@ -1716,6 +1716,11 @@ async function sendToTower(){
   const buf = unitSTL();
   const slug = (S.name + '').normalize('NFKD').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unit';
   const name = `${S.no}-${slug}-${S.spec.map(([k]) => k + (+P[k]).toFixed(k === 'ori' ? 0 : 2).replace(/\.?0+$/, '')).join('-')}.stl`;
+  if (!ON_PAGES && dl){
+    try { await dl.save({filename: name.replace(/\.stl$/, '.zip'), data: zip(name, new Uint8Array(buf))}); toast('这里不能直接跳转：已下载单体 STL（1 层 = 3.6 m），拖进塔楼生成器即可'); }
+    catch (e){ toast('导出失败，请重试'); }
+    return;
+  }
   if (!ON_PAGES){
     const url = URL.createObjectURL(new Blob([buf], {type:'model/stl'})), a = document.createElement('a');
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
