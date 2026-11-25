@@ -19,6 +19,8 @@ Single file, no build step; preview uses plain WebGL2 instancing.
 
 **Waist display**: the waist is easy to lose behind the twist (arm orientation changes the silhouette by up to ~29 % floor to floor), so the view draws a waist outline — orange profile lines facing the camera at radius = farthest point of the unit × floor scale, plus dashed rings at the bottom, narrowest and top floors (toggle in the Waist section). A second toggle colours floors by scale (white → orange, with legend). During Play the waist stage colours the tower and shows the outline, the colour fades back to white during the twist, and the orbit shows the white model with the outline. Display only; exports are unaffected.
 
+**Opening model**: the page opens with the last STL you imported in this browser (kept in IndexedDB, with its parameters), otherwise straight with `sample-unit.stl` (a short "loading" note instead of the slab placeholder); parameters are remembered per model (last 6) in localStorage. "Forget saved model" clears the stored import. Nothing is uploaded anywhere — it stays in the browser.
+
 **Language**: Chinese / English (中 | EN switch next to the title). The page follows the browser/system language on first visit and then remembers the last choice; exported ZIP folders, file names, `assembly.svg`/`组装图.svg` and the notes follow the interface language.
 
 ## Print parts (Bambu Lab A1, 256 × 256 × 256 mm)

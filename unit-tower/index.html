@@ -76,6 +76,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 #cap .bar i.orbit.on{background:#64d2ff}
 #toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(28,28,30,.92);border:0.5px solid var(--line2);padding:8px 14px;border-radius:10px;font-size:12px;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--t2);font-size:13px;pointer-events:none}
 #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--t2);text-align:center;padding:30px}
 .hidden{display:none!important}
 .head{display:flex;justify-content:space-between;align-items:center;gap:10px}
@@ -105,7 +106,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
         <div class="seg" id="segUnit"><button data-v="0.001">mm</button><button data-v="0.01">cm</button><button data-v="1">m</button></div></div>
       <div class="row"><label data-i18n="upAxis"></label>
         <div class="seg" id="segUp"><button data-v="z" class="on">Z</button><button data-v="y">Y</button></div></div>
-      <div><button class="link" id="btnUnit" data-i18n="btnUnit"></button> <button class="link" id="btnSample" style="margin-left:12px" data-i18n="btnSample"></button></div>
+      <div><button class="link" id="btnUnit" data-i18n="btnUnit"></button> <button class="link" id="btnSample" style="margin-left:12px" data-i18n="btnSample"></button><button class="link hidden" id="btnForget" style="margin-left:12px" data-i18n="forget"></button></div>
     </div>
 
     <div class="sec" id="secThick">
@@ -185,6 +186,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     <div id="legend" class="hidden"><span data-i18n="legend"></span><i></i><b id="legA">1.00</b><b id="legB">0.62</b></div>
     <div id="hud"><div class="a" id="hudA"></div><div class="b" data-i18n="hint"></div></div>
     <div id="err"></div>
+    <div id="loading" data-i18n="loadingUnit"></div>
   </main>
 </div>
 
@@ -978,7 +980,7 @@ const I18N = {
     packFail: '排盘失败：', prevFail: '预览失败：', exportFail: '导出失败：', noFit: '{name} 放不进打印盘',
     plateProg: '盘 {i}/{n}', zipping: '打包…', exported: '已导出 {p} 盘 · {n} 片', exportedMissing: ' · {n} 片层号放不下',
     rhinoLoad: '正在加载 Rhino 库…', rhinoFail: '无法加载 rhino3dm（需要联网）', noWebgl: '浏览器不支持 WebGL2，无法预览（导出仍可用）',
-    sampleSlab: '示例楼板', sampleUnit: '示例单体',
+    sampleSlab: '示例楼板', sampleUnit: '示例单体', loadingUnit: '加载单体中…', forget: '清除记住的模型', forgotten: '已清除，下次打开显示示例单体', restored: '已恢复上次导入的 {name}',
     folder: '打印件', fPlates: '按盘', fPieces: '单片', plateFile: '盘', guideFile: '组装图.svg', notesFile: '说明.txt', sep: '、',
     gTitle: '{t} · 组装图', gLine1: '1:{s} · 打印壁厚 {w} mm · 每层两片：N-1 上半（翻面打印，组装时翻回）、N-2 下半 · 从下往上按层号粘合',
     gLine2: '角度为相对第 1 层逆时针旋转（俯视），橙线为第 1 层的十字臂方向', gPlate: '盘 {p}', gPair: '{n}-1 上 · {n}-2 下',
@@ -1022,7 +1024,7 @@ const I18N = {
     packFail: 'Packing failed: ', prevFail: 'Preview failed: ', exportFail: 'Export failed: ', noFit: '{name} does not fit on a plate',
     plateProg: 'Plate {i}/{n}', zipping: 'Zipping…', exported: 'Exported {p} plates · {n} pieces', exportedMissing: ' · {n} pieces without label',
     rhinoLoad: 'Loading the Rhino library…', rhinoFail: 'Could not load rhino3dm (needs internet)', noWebgl: 'This browser has no WebGL2 — no preview (export still works)',
-    sampleSlab: 'Sample slab', sampleUnit: 'Sample unit',
+    sampleSlab: 'Sample slab', sampleUnit: 'Sample unit', loadingUnit: 'Loading unit…', forget: 'Forget saved model', forgotten: 'Cleared — the sample unit will open next time', restored: 'Restored your last model {name}',
     folder: 'print-parts', fPlates: 'plates', fPieces: 'pieces', plateFile: 'plate', guideFile: 'assembly.svg', notesFile: 'readme.txt', sep: ', ',
     gTitle: '{t} · assembly', gLine1: '1:{s} · print wall {w} mm · two pieces per floor: N-1 upper half (printed flipped, turn it back), N-2 lower half · glue bottom-up by floor number',
     gLine2: 'Angles are anticlockwise from floor 1 (plan view); orange lines show the arm directions of floor 1', gPlate: 'plate {p}', gPair: '{n}-1 upper · {n}-2 lower',
@@ -1098,6 +1100,7 @@ function params() {
 const fmt = (v, d = 2) => (+v.toFixed(d)).toLocaleString(LANG === 'zh' ? 'zh-CN' : 'en-GB', { maximumFractionDigits: d });
 const trisText = n => LANG === 'zh' ? `${(n / 1e4).toFixed(n > 1e5 ? 0 : 1)} 万面` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} M triangles` : `${Math.round(n / 1e3)} k triangles`;
 function updateInfo() {
+  if (!geo) return;
   const u = S.unit, s = geo.bb.size;
   const es = geo.es;
   const state = es.closed ? t('stClosed')
@@ -1114,6 +1117,7 @@ function updateInfo() {
 }
 
 function update(refit, keepPlay) {
+  if (!geo) return;
   if (typeof PLAY !== 'undefined' && PLAY.on && !keepPlay) stopPlay(false);
   const p = params();
   const fl = Core.floors(p);
@@ -1138,6 +1142,7 @@ function update(refit, keepPlay) {
   renderChips();
   R.setFloors(fl, geo, p);
   applyVis(VIS.colour ? 1 : 0, VIS.lines);
+  saveParams();
   if (refit) R.fit();
   R.draw();
 }
@@ -1356,25 +1361,76 @@ function guessUnit(pos) {
 function loadBuffer(buf, name, quiet) {
   let pos;
   try { pos = Core.parseSTL(buf); } catch (e) { pos = null; }
-  if (!pos || pos.length < 9) { toast(t('notStl')); return; }
+  if (!pos || pos.length < 9) { toast(t('notStl')); return false; }
   raw = pos; fileName = name; sampleKind = name ? null : sampleKind;
   S.unit = guessUnit(pos);
   S.gap = defaultGap(pos, S.unit, S.upY);
   syncAll();
   rebuild();
   if (!quiet) toast(t('loaded', { name, u: S.unit === 0.001 ? 'mm' : 'm' }) + (S.gap === 0 ? t('loadedGap0') : '') + t('loadedEnd'));
+  return true;
 }
 function loadSample() {
   raw = Core.samplePlate(); fileName = ''; sampleKind = 'slab'; S.unit = 1; S.upY = false;
   S.gap = defaultGap(raw, 1, false);
   syncAll(); rebuild();
 }
+// ---------- remember the last imported STL (IndexedDB) and the parameters (localStorage) ----------
+const STORE = {
+  db: null,
+  open() {
+    if (this.db) return this.db;
+    this.db = new Promise((res, rej) => {
+      if (!window.indexedDB) return rej(new Error('no indexedDB'));
+      const q = indexedDB.open('unitTower', 1);
+      q.onupgradeneeded = () => q.result.createObjectStore('files');
+      q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+    });
+    return this.db;
+  },
+  async op(mode, fn) { const db = await this.open(); return new Promise((res, rej) => { const tx = db.transaction('files', mode); const r = fn(tx.objectStore('files')); tx.oncomplete = () => res(r && r.result); tx.onerror = () => rej(tx.error); }); },
+  get() { return this.op('readonly', s => s.get('last')); },
+  put(name, buf) { return this.op('readwrite', s => s.put({ name, buf, at: Date.now() }, 'last')); },
+  del() { return this.op('readwrite', s => s.delete('last')); },
+};
+const PARAM_KEY = 'unitTower.params';
+const modelTag = () => sampleKind === 'unit' ? 'sample' : sampleKind ? null : 'user:' + fileName;
+let saveT = 0, savePending = null;
+function saveParams() {
+  const tag = modelTag(); if (!tag) return;
+  clearTimeout(saveT);
+  savePending = () => {
+    savePending = null;
+    const keep = ['count', 'gap', 'minR', 'curve', 'step', 'thick', 'pivot', 'unit', 'upY'];
+    const data = { at: Date.now(), S: Object.fromEntries(keep.map(k => [k, S[k]])), PR: { den: PR.den, wall: PR.wall, labels: PR.labels, margin: PR.margin, gap: PR.gap }, VIS: { ...VIS } };
+    const all = readParams(); all[tag] = data;
+    for (const k of Object.keys(all).sort((a, b) => all[b].at - all[a].at).slice(6)) delete all[k];   // keep the 6 most recent models
+    try { localStorage.setItem(PARAM_KEY, JSON.stringify(all)); } catch (e) {}
+  };
+  saveT = setTimeout(() => savePending && savePending(), 300);
+}
+window.addEventListener('pagehide', () => { if (savePending) savePending(); });
+function readParams() {
+  try { const o = JSON.parse(localStorage.getItem(PARAM_KEY) || '{}'); return o && typeof o === 'object' && !o.tag ? o : {}; } catch (e) { return {}; }
+}
+function restoreParams() {
+  const d = readParams()[modelTag()];
+  if (!d) return false;
+  Object.assign(S, d.S); Object.assign(PR, d.PR); Object.assign(VIS, d.VIS);
+  const segOn = (id, v) => { for (const b of $(id).querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === String(v)); };
+  segOn('segScale', PR.den); segOn('segLabel', PR.labels ? 1 : 0); segOn('segShade', VIS.colour ? 1 : 0); segOn('segEnv', VIS.lines ? 1 : 0);
+  $('nMargin').value = PR.margin; $('nGapP').value = PR.gap;
+  syncAll(); rebuild();
+  return true;
+}
+function showForget(on) { $('btnForget').classList.toggle('hidden', !on); }
 const drop = $('drop'), file = $('file');
 drop.addEventListener('click', () => file.click());
-file.addEventListener('change', () => { const f = file.files[0]; if (f) f.arrayBuffer().then(b => loadBuffer(b, f.name)); file.value = ''; });
+const importFile = f => f.arrayBuffer().then(b => { if (loadBuffer(b, f.name)) STORE.put(f.name, b).then(() => showForget(true)).catch(() => {}); });
+file.addEventListener('change', () => { const f = file.files[0]; if (f) importFile(f); file.value = ''; });
 for (const ev of ['dragenter', 'dragover']) document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); });
 for (const ev of ['dragleave', 'drop']) document.addEventListener(ev, e => { e.preventDefault(); if (ev === 'drop' || !e.relatedTarget) drop.classList.remove('over'); });
-document.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) f.arrayBuffer().then(b => loadBuffer(b, f.name)); });
+document.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) importFile(f); });
 $('btnSample').onclick = loadSample;
 // the bundled sample unit sits next to this page; opened from disk (no server) it falls back to the plate
 async function loadUnit(quiet) {
@@ -1382,9 +1438,22 @@ async function loadUnit(quiet) {
     const r = await fetch('sample-unit.stl');
     if (!r.ok) throw new Error(r.status);
     loadBuffer(await r.arrayBuffer(), '', quiet); sampleKind = 'unit'; updateInfo();
+    restoreParams();
   } catch (e) { loadSample(); if (!quiet) toast(t('sampleNeedsWeb')); }
 }
 $('btnUnit').onclick = () => loadUnit(false);
+$('btnForget').onclick = () => { STORE.del().catch(() => {}); const all = readParams(); for (const k of Object.keys(all)) if (k.startsWith('user:')) delete all[k]; try { localStorage.setItem(PARAM_KEY, JSON.stringify(all)); } catch (e) {} showForget(false); toast(t('forgotten')); };
+// open: your last imported STL, else the sample unit, else (opened from disk) the sample slab
+async function init() {
+  let rec = null;
+  try { rec = await STORE.get(); } catch (e) {}
+  if (rec && rec.buf && loadBuffer(rec.buf, rec.name, true)) {
+    restoreParams();
+    showForget(true);
+    toast(t('restored', { name: rec.name }));
+  } else await loadUnit(true);
+  $('loading').classList.add('hidden');
+}
 $('btnReset').onclick = () => { Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY); syncAll(); rebuild(); };
 $('btnFit').onclick = () => { R.fit(); R.draw(); };
 for (const [id, key] of [['nMargin', 'margin'], ['nGapP', 'gap']]) {
@@ -1767,6 +1836,7 @@ function stopPlay(redraw = true) {
   if (redraw) update(false);
 }
 function startPlay() {
+  if (!geo) return;
   if (PR.preview || PR.plate) update(true);
   const p = params(), fl = Core.floors(p);
   PLAY.on = true; PLAY.t0 = performance.now(); PLAY.last = PLAY.t0; PLAY.input = -1e9;
@@ -1857,8 +1927,7 @@ function updateRead() {
 $('segLang').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLang(b.dataset.v); });
 applyStatic();
 window.__app = { S, Core, get geo() { return geo; }, loadBuffer, rebuild };
-loadSample();
-loadUnit(true);
+init();
 })();
 </script>
 </body>
