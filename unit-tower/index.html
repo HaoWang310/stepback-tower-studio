@@ -714,9 +714,9 @@ $('btnSample').onclick = loadSample;
 // the bundled sample unit sits next to this page; opened from disk (no server) it falls back to the plate
 async function loadUnit(quiet) {
   try {
-    const r = await fetch('sample-unit.stl');
+    const r = await fetch('sample-unit-repaired.stl');
     if (!r.ok) throw new Error(r.status);
-    loadBuffer(await r.arrayBuffer(), '示例单体.stl', quiet);
+    loadBuffer(await r.arrayBuffer(), '示例单体（已修复）.stl', quiet);
   } catch (e) { loadSample(); if (!quiet) toast('示例单体需要在网页上打开，已载入示例楼板'); }
 }
 $('btnUnit').onclick = () => loadUnit(false);
