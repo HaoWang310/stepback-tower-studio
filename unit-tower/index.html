@@ -15,7 +15,32 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--font);font-size:13px;-webkit-font-smoothing:antialiased;overflow:hidden}
-#app{display:flex;height:100%;gap:12px;padding:12px}
+#app{display:flex;height:calc(100% - 52px);gap:12px;padding:12px}
+#steps{height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 18px;border-bottom:0.5px solid var(--line2)}
+#steps .back{color:var(--t2);text-decoration:none;font-size:13px;white-space:nowrap}
+#steps .back:hover{color:var(--t1)}
+.stepper{display:flex;align-items:center;gap:8px;min-width:0}
+.st{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 6px;border-radius:18px;background:#1c1c1e;border:0;color:var(--t1);font:inherit;cursor:pointer;text-decoration:none;min-width:0}
+.st:hover{background:#2c2c2e}
+.st i{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:500;background:#3a3a3c}
+.st b{font-weight:500;font-size:13px;white-space:nowrap}
+.st small{color:var(--t3);font-size:11px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st.on{background:var(--t1);color:#000}.st.on i{background:#000;color:#fff}.st.on small{color:rgba(0,0,0,.55)}
+.st.done i{background:#00c8d2;color:#000}
+.sl{flex:none;width:18px;height:1px;background:#3a3a3c}
+.ucard{display:grid;grid-template-columns:76px 1fr;gap:12px;align-items:center;background:#1c1c1e;border-radius:12px;padding:10px}
+.ucard img{width:76px;height:76px;object-fit:cover;border-radius:8px;background:#000}
+.ucard b{font-weight:500;font-size:13px;display:block;line-height:1.35}
+.ucard small{display:block;color:var(--t3);font-size:11.5px;line-height:1.5;margin-top:2px}
+.ucard a{color:#64d2ff;font-size:12px;text-decoration:none;display:inline-block;margin-top:4px}
+body[data-mode=tower] #secPrint{display:none}
+body[data-mode=print] #panel > .sec:not(#secPrint):not(#secUnit){display:none}
+body[data-mode=print] #nextWrap{display:none}
+#nextWrap{position:sticky;bottom:-22px;margin:22px -18px -22px;padding:14px 18px 18px;background:linear-gradient(rgba(11,11,12,0),var(--panel) 35%)}
+#nextWrap .btn{width:100%;padding:12px 0;font-size:14px}
+#ticks{position:relative;height:8px;margin:-2px 7px 0}
+#ticks i{position:absolute;top:0;width:2px;height:8px;background:#00c8d2;border-radius:1px;transform:translateX(-1px)}
+.read .ok{color:#00c8d2}
 #panel{width:300px;flex:none;background:var(--panel);border:0.5px solid var(--line2);border-radius:16px;overflow-y:auto;padding:18px 18px 22px;scrollbar-width:thin;scrollbar-color:#2c2c2e transparent}
 #view{position:relative;flex:1;min-width:0;background:#030303;border:0.5px solid var(--line2);border-radius:16px;overflow:hidden}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
@@ -85,17 +110,34 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 .chips button{min-width:34px;border:0.5px solid #48484a;background:transparent;color:var(--t2);font:inherit;font-size:12px;padding:5px 0;border-radius:8px;cursor:pointer}
 .chips button.on{background:var(--t1);color:#000;border-color:var(--t1)}
 @media (max-width:760px){
+  .st small{display:none} .st{padding:0 10px 0 6px} #steps{padding:0 10px} #steps .back{display:none}
   #app{flex-direction:column-reverse;padding:8px;gap:8px}
   #panel{width:auto;height:46%;border-radius:14px}
   #view{flex:1}
 }
 </style>
 </head>
-<body>
+<body data-mode="tower">
+<nav id="steps">
+  <a class="back" href="../minimal-surfaces/" data-i18n="stCatalogue">‹ 目录</a>
+  <div class="stepper">
+    <a class="st done" id="st1" href="../minimal-surfaces/"><i>✓</i><b data-i18n="st1"></b><small id="st1s"></small></a>
+    <span class="sl"></span>
+    <button class="st on" id="st2" type="button"><i>2</i><b data-i18n="st2"></b><small id="st2s"></small></button>
+    <span class="sl"></span>
+    <button class="st" id="st3" type="button"><i>3</i><b data-i18n="st3"></b><small id="st3s"></small></button>
+  </div>
+  <div class="seg" id="segLang"><button data-v="zh">中</button><button data-v="en">EN</button></div>
+</nav>
 <div id="app">
   <aside id="panel">
-    <div class="head"><h1 data-i18n="title">单体塔楼生成器</h1><div class="seg" id="segLang"><button data-v="zh">中</button><button data-v="en">EN</button></div></div>
+    <div class="head"><h1 data-i18n="title">单体塔楼生成器</h1></div>
     <p class="sub" data-i18n="sub"></p>
+
+    <div class="sec hidden" id="secUnit">
+      <h2><b data-i18n="secUnit"></b> <span data-i18n="fromCatalogue"></span></h2>
+      <div class="ucard"><img id="uThumb" alt=""><div><b id="uName"></b><small id="uParams"></small><small id="uSize"></small><a id="uBack" href="../minimal-surfaces/" data-i18n="changeUnit"></a></div></div>
+    </div>
 
     <div class="sec">
       <h2><b data-i18n="secInput"></b> <span id="fname"></span></h2>
@@ -140,7 +182,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     <div class="sec">
       <h2 data-i18n="secTwist"></h2>
       <div class="row"><label data-i18n="step"></label><span><input class="num" id="nRot" type="number" step="0.5"><span class="unit">°</span></span></div>
-      <input type="range" id="rRot" min="-90" max="90" step="0.5">
+      <input type="range" id="rRot" min="-180" max="180" step="0.5">
+      <div id="ticks"></div>
       <div class="row"><label data-i18n="pivot"></label>
         <div class="seg" id="segPivot"><button data-v="centroid" class="on" data-i18n="centroid"></button><button data-v="bbox" data-i18n="bboxc"></button></div></div>
       <div class="read" id="readTwist"></div>
@@ -176,6 +219,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       <div class="read" id="readExport"></div>
       <button class="link" id="btnReset" data-i18n="reset"></button>
     </div>
+    <div id="nextWrap"><button class="btn primary" id="btnNext" data-i18n="nextPrint"></button></div>
   </aside>
 
   <main id="view">
@@ -971,6 +1015,8 @@ const I18N = {
     secInput: '输入', drop: '<b>拖入 STL 单体</b><br>或点击选择文件', units: '单位', upAxis: '竖向轴', btnUnit: '示例单体', btnSample: '示例楼板',
     secThick: '加厚', thickNote: '两侧各一半 · 自动统一法线', thickness: '厚度',
     secStack: '叠层', floors: '层数', gap: '净高', secWaist: '收腰', minR: '最细比例', curve: '曲线', linear: '线性', smooth: '平滑',
+    stCatalogue: '‹ 目录', st1: '单体', st2: '塔楼', st3: '打印', st2s: '{n} 层 · {d}°', st3s: '1:{d}', secUnit: '单体', fromCatalogue: '来自极小曲面目录', changeUnit: '更换单体 ›', nextPrint: '下一步：打印 →', uSize: '{w} × {d} × {h} m · 一个单体 = 一层',
+    contact: '层间接触 {c}%', contactLow: '层间只接触 {c}%，打印件粘不住。能对接的角度：{a}', snapAny: '任意角度都能对接', snapTicks: '青色刻度 = 能对接的角度（拖动时吸附）', snapNone: '', autoStep: '已设为能对接的扭转角 {a}°',
     secTwist: '扭转', step: '每层角度', pivot: '基点', centroid: '质心', bboxc: '包围盒中心',
     secPrint: '打印分件', scale: '比例', wall: '打印壁厚', labels: '层号', emboss: '压凸字', noEmboss: '不压',
     margin: '盘边留白', gapP: '零件间距', prevFloor: '预览第', prevUnit: '层分件',
@@ -1015,6 +1061,8 @@ const I18N = {
     secInput: 'Input', drop: '<b>Drop an STL unit</b><br>or click to choose a file', units: 'Units', upAxis: 'Up axis', btnUnit: 'Sample unit', btnSample: 'Sample slab',
     secThick: 'Thicken', thickNote: 'half on each side · normals unified', thickness: 'Thickness',
     secStack: 'Stacking', floors: 'Floors', gap: 'Clear height', secWaist: 'Waist', minR: 'Narrowest scale', curve: 'Curve', linear: 'Linear', smooth: 'Smooth',
+    stCatalogue: '‹ Catalogue', st1: 'Unit', st2: 'Tower', st3: 'Print', st2s: '{n} floors · {d}°', st3s: '1:{d}', secUnit: 'Unit', fromCatalogue: 'from the minimal surface catalogue', changeUnit: 'Change unit ›', nextPrint: 'Next: print →', uSize: '{w} × {d} × {h} m · one unit = one floor',
+    contact: 'floor contact {c}%', contactLow: 'Floors touch only {c}% — printed floors will not hold. Angles that join: {a}', snapAny: 'Any angle joins', snapTicks: 'Cyan ticks = angles where floors join (snaps while dragging)', snapNone: '', autoStep: 'Twist set to {a}°, an angle where floors join',
     secTwist: 'Twist', step: 'Per floor', pivot: 'Pivot', centroid: 'Centroid', bboxc: 'Box centre',
     secPrint: 'Print parts', scale: 'Scale', wall: 'Print wall', labels: 'Floor labels', emboss: 'Raised', noEmboss: 'None',
     margin: 'Plate margin', gapP: 'Part spacing', prevFloor: 'Preview floor', prevUnit: '',
@@ -1057,7 +1105,7 @@ const I18N = {
 };
 const LANG_KEY = 'unitTower.lang';
 let LANG = (() => {
-  try { const v = localStorage.getItem(LANG_KEY); if (v === 'zh' || v === 'en') return v; } catch (e) {}
+  try { const q = new URLSearchParams(location.search).get('lang'); if (q === 'zh' || q === 'en') return q; const v = localStorage.getItem(LANG_KEY) || localStorage.getItem('ms-lang'); if (v === 'zh' || v === 'en') return v; } catch (e) {}
   const langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ''];
   return /^zh/i.test(langs[0] || '') ? 'zh' : 'en';
 })();
@@ -1103,6 +1151,7 @@ function rebuild() {
   if (S.pivot === 'bbox') c = bc;
   else c = vc.c && Math.abs(vc.vol) > 1e-12 ? vc.c : Core.areaCentroid(V, F).c;
   geo = { V, F, bb, c, es, thick, h: bb.size[2] };
+  computeSnaps();
   halves = null;
   PR.preview = 0;
   packCache = null;
@@ -1114,6 +1163,106 @@ function rebuild() {
 function params() {
   return { count: S.count, pitch: geo.h + S.gap / S.unit, minR: S.minR, curve: S.curve, stepDeg: S.step };
 }
+
+// ---------- 层间对接：上一层顶边与下一层底边（转过扭转角）重合多少 ----------
+// 只看开放曲面单体的顶 / 底边界；接触 ≥ 90% 的角度算「能对接」，扭转滑杆上画刻度并吸附。
+const SNAP = { prof: null, list: [], any: false };
+function computeSnaps() {
+  SNAP.prof = null; SNAP.list = []; SNAP.any = false;
+  const es = Core.edgeStats(baseMesh.F, baseMesh.V.length / 3);
+  if (es.closed || !es.boundary.length) { drawTicks(); return; }
+  const V = baseMesh.V, bb = Core.bbox(V), tz = bb.size[2] * 1e-3 + 1e-9;
+  const top = [], bot = [], L = Math.max(bb.size[0], bb.size[1]), step = L / 300, tol = L * 0.015;
+  const samp = (out, a, b) => { const ax = V[a * 3], ay = V[a * 3 + 1], bx = V[b * 3], by = V[b * 3 + 1], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / step)); for (let k = 0; k < n; k++) out.push(ax + (bx - ax) * k / n, ay + (by - ay) * k / n); };
+  for (const [a, b] of es.boundary) {
+    const za = V[a * 3 + 2], zb = V[b * 3 + 2];
+    if (Math.abs(za - bb.max[2]) < tz && Math.abs(zb - bb.max[2]) < tz) samp(top, a, b);
+    else if (Math.abs(za - bb.min[2]) < tz && Math.abs(zb - bb.min[2]) < tz) samp(bot, a, b);
+  }
+  if (top.length < 20 || bot.length < 20) { drawTicks(); return; }
+  // 顶 / 底有水平的面（楼板一类）：上下层是面贴面，不靠边线对接，这项检查不适用
+  { const F = baseMesh.F, onT = i => Math.abs(V[i * 3 + 2] - bb.max[2]) < tz, onB = i => Math.abs(V[i * 3 + 2] - bb.min[2]) < tz;
+    for (let f = 0; f < F.length; f += 3) if ((onT(F[f]) && onT(F[f + 1]) && onT(F[f + 2])) || (onB(F[f]) && onB(F[f + 1]) && onB(F[f + 2]))) { drawTicks(); return; } }
+  const c = geo ? geo.c : [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2];
+  const nb = bot.length / 2, nt = top.length / 2, prof = new Float32Array(721);
+  for (let i = 0; i <= 720; i++) {
+    const th = (i / 2 - 180) * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th), grid = new Map();
+    for (let j = 0; j < nb; j++) {
+      const dx = bot[j * 2] - c[0], dy = bot[j * 2 + 1] - c[1], x = c[0] + cs * dx - sn * dy, y = c[1] + sn * dx + cs * dy;
+      const k = (Math.floor(x / tol) + 65536) * 131072 + Math.floor(y / tol) + 65536; let g = grid.get(k); if (!g) grid.set(k, g = []); g.push(x, y);
+    }
+    let hit = 0;
+    for (let j = 0; j < nt; j++) {
+      const x = top[j * 2], y = top[j * 2 + 1], gx = Math.floor(x / tol), gy = Math.floor(y / tol); let ok = false;
+      for (let u = -1; u <= 1 && !ok; u++) for (let v = -1; v <= 1 && !ok; v++) { const g = grid.get((gx + u + 65536) * 131072 + gy + v + 65536); if (g) for (let q = 0; q < g.length; q += 2) if (Math.hypot(g[q] - x, g[q + 1] - y) < tol) { ok = true; break; } }
+      if (ok) hit++;
+    }
+    prof[i] = hit / nt;
+  }
+  SNAP.prof = prof;
+  { let mn = 1, mx = 0; for (const v of prof){ if (v < mn) mn = v; if (v > mx) mx = v; } SNAP.min = mn;
+    // 每个角度都 ≥ 90%，或者整圈几乎一样（例如样例楼板）：扭转角不影响对接
+    if (mn >= 0.9 || mx - mn < 0.15) { SNAP.any = true; drawTicks(); return; } }
+  // 连续 ≥ 0.9 的一段取中点；角度是一圈（-180° 和 180° 相连），跨过 ±180° 的一段要合起来算
+  const N = 720, on = i => prof[((i % N) + N) % N] >= 0.9;
+  let s0 = 0; while (s0 < N && on(s0)) s0++;          // 从一个「不接触」的位置开始扫，避免把一段切成两半
+  for (let k = 1; k <= N; k++) {
+    const i = s0 + k; if (!on(i) || on(i - 1)) continue;
+    let j = i; while (j + 1 < s0 + N + 1 && on(j + 1)) j++;
+    let a = ((i + j) / 2) / 2 - 180; a = ((a + 180) % 360 + 360) % 360 - 180; if (a === -180) a = 180;
+    SNAP.list.push(Math.round(a * 2) / 2);
+  }
+  SNAP.list.sort((x, y) => x - y);
+  drawTicks();
+}
+function contactAt(d) { if (!SNAP.prof) return null; let a = ((d + 180) % 360 + 360) % 360 - 180; return SNAP.prof[Math.round((a + 180) * 2)]; }
+function snapStep(v) {
+  if (!SNAP.list.length) return v;
+  for (const a of SNAP.list) if (Math.abs(a - v) <= 3) return a;
+  return v;
+}
+function autoStep() { const pos = SNAP.list.filter(a => a > 0).sort((a, b) => a - b); return pos.length ? pos[0] : null; }
+function drawTicks() {
+  const el = $('ticks'); if (!el) return;
+  el.innerHTML = SNAP.list.map(a => `<i style="left:${(a + 180) / 360 * 100}%" title="${a}°"></i>`).join('');
+}
+function twistNote() {
+  if (!SNAP.prof) return '';
+  const c = Math.round(contactAt(S.step) * 100), list = SNAP.list.map(a => a + '°').join(' / ');
+  if (SNAP.any) return '<br><span class="ok">' + t('snapAny') + '</span> · ' + t('contact', { c });
+  if (c >= 90) return '<br><span class="ok">' + t('contact', { c }) + '</span><br>' + t('snapTicks');
+  if (c < 50) return '<br><span class="warn">' + t('contactLow', { c, a: list || '—' }) + '</span><br>' + t('snapTicks');
+  return '<br>' + t('contact', { c }) + (list ? ' · ' + list : '') + '<br>' + t('snapTicks');
+}
+// ---------- 步骤条：① 单体（目录） ② 塔楼 ③ 打印 ----------
+let MODE = location.hash === '#print' ? 'print' : 'tower', META = null;
+function setMode(m, quiet) {
+  MODE = m; document.body.dataset.mode = m;
+  $('st2').classList.toggle('on', m === 'tower'); $('st3').classList.toggle('on', m === 'print');
+  $('st2').classList.toggle('done', m === 'print');
+  $('st2').querySelector('i').textContent = m === 'print' ? '✓' : '2';
+  try { history.replaceState(null, '', m === 'print' ? '#print' : location.pathname + location.search); } catch (e) {}
+  if (quiet || !geo) return;
+  if (m === 'print' && !PR.preview && !PR.plate && !$('btnPrev').disabled) $('btnPrev').click();
+  if (m === 'tower' && (PR.preview || PR.plate)) update(true);
+}
+function updateSteps() {
+  const nm = META ? (LANG === 'en' ? META.name_en : META.name_zh) : dispName();
+  $('st1s').textContent = nm || '';
+  $('st2s').textContent = t('st2s', { n: S.count, d: fmt(S.step, 1) });
+  $('st3s').textContent = t('st3s', { d: PR.den });
+  const back = META && META.id ? '../minimal-surfaces/#' + META.id : '../minimal-surfaces/';
+  $('st1').href = back; $('uBack').href = back;
+  $('secUnit').classList.toggle('hidden', !META);
+  if (META) {
+    $('uThumb').src = META.thumb || ''; $('uName').textContent = nm;
+    $('uParams').textContent = (META.params || []).map(([zh, en, v]) => (LANG === 'en' ? en : zh) + ' ' + v).join(' · ');
+    if (geo) { const s = geo.bb.size, u = S.unit; $('uSize').textContent = t('uSize', { w: fmt(s[0] * u, 1), d: fmt(s[1] * u, 1), h: fmt(s[2] * u, 1) }); }
+  }
+}
+$('st2').addEventListener('click', () => setMode('tower'));
+$('st3').addEventListener('click', () => setMode('print'));
+$('btnNext').addEventListener('click', () => { setMode('print'); $('panel').scrollTop = 0; });
 
 // ---------- UI ----------
 const fmt = (v, d = 2) => (+v.toFixed(d)).toLocaleString(LANG === 'zh' ? 'zh-CN' : 'en-GB', { maximumFractionDigits: d });
@@ -1133,6 +1282,7 @@ function updateInfo() {
     `<span class="dot"></span>${state}${fix}`;
   $('secThick').classList.toggle('hidden', !geo.thick);
   { const n = dispName(); $('fname').textContent = n.length > 22 ? n.slice(0, 20) + '…' : n; }
+  updateSteps();
 }
 
 function update(refit, keepPlay) {
@@ -1146,7 +1296,8 @@ function update(refit, keepPlay) {
   const kmax = Math.floor((S.count - 1) / 2);
   const mids = S.count % 2 === 0 && S.count > 1 ? t('waistTwo', { a: S.count / 2, b: S.count / 2 + 1 }) : t('waistOne', { a: kmax + 1 });
   $('readWaist').textContent = S.count < 3 ? t('waistFew') : t('waist', { m: mids, r: fmt(S.minR, 2) });
-  $('readTwist').textContent = t('twistRead', { d: fmt((S.count - 1) * S.step, 1), t: fmt(Math.abs((S.count - 1) * S.step) / 360, 2) });
+  $('readTwist').innerHTML = t('twistRead', { d: fmt((S.count - 1) * S.step, 1), t: fmt(Math.abs((S.count - 1) * S.step) / 360, 2) }) + twistNote();
+  updateSteps();
   const tris = geo.F.length / 3 * S.count;
   const mb = (84 + tris * 50) / 1048576;
   $('expInfo').textContent = trisText(tris);
@@ -1311,6 +1462,7 @@ function bindSlider(key, nId, rId, opts = {}) {
     if (opts.int) v = Math.round(v);
     if (opts.lo !== undefined) v = Math.max(opts.lo, v);
     if (opts.hi !== undefined) v = Math.min(opts.hi, v);
+    if (key === 'step' && from === r) v = snapStep(v);
     S[key] = v;
     if (from !== n) n.value = v;
     if (from !== r) r.value = v;
@@ -1390,6 +1542,8 @@ function loadBuffer(buf, name, quiet) {
   return true;
 }
 function loadSample() {
+  if (META) Object.assign(S, GH);
+  META = null;
   raw = Core.samplePlate(); fileName = ''; sampleKind = 'slab'; S.unit = 1; S.upY = false;
   S.gap = defaultGap(raw, 1, false);
   syncAll(); rebuild();
@@ -1445,7 +1599,7 @@ function restoreParams() {
 function showForget(on) { $('btnForget').classList.toggle('hidden', !on); }
 const drop = $('drop'), file = $('file');
 drop.addEventListener('click', () => file.click());
-const importFile = f => f.arrayBuffer().then(b => { if (loadBuffer(b, f.name)) STORE.put(f.name, b).then(() => showForget(true)).catch(() => {}); });
+const importFile = f => f.arrayBuffer().then(b => { META = null; if (loadBuffer(b, f.name)) STORE.put(f.name, b).then(() => showForget(true)).catch(() => {}); });
 file.addEventListener('change', () => { const f = file.files[0]; if (f) importFile(f); file.value = ''; });
 for (const ev of ['dragenter', 'dragover']) document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); });
 for (const ev of ['dragleave', 'drop']) document.addEventListener(ev, e => { e.preventDefault(); if (ev === 'drop' || !e.relatedTarget) drop.classList.remove('over'); });
@@ -1456,6 +1610,7 @@ async function loadUnit(quiet) {
   try {
     const r = await fetch('sample-unit.stl');
     if (!r.ok) throw new Error(r.status);
+    const wasCat = !!META; META = null; if (wasCat) Object.assign(S, GH);
     loadBuffer(await r.arrayBuffer(), '', quiet); sampleKind = 'unit'; updateInfo();
     restoreParams();
   } catch (e) { loadSample(); if (!quiet) toast(t('sampleNeedsWeb')); }
@@ -1466,12 +1621,21 @@ $('btnForget').onclick = () => { STORE.del().catch(() => {}); const all = readPa
 async function init() {
   let rec = null;
   try { rec = await STORE.get(); } catch (e) {}
+  META = rec && rec.meta && rec.meta.src === 'catalogue' ? rec.meta : null;
   if (rec && rec.buf && loadBuffer(rec.buf, rec.name, true)) {
-    restoreParams();
+    if (META && META.fresh) {
+      // 刚从目录送来：一个单体 = 一层（净高 0），扭转设为第一个能对接的角度
+      Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY);
+      const a = autoStep(); if (a !== null) S.step = a;
+      syncAll(); rebuild();
+      META.fresh = false; STORE.op('readwrite', s => s.put({ ...rec, meta: META }, 'last')).catch(() => {});
+      toast(a !== null ? t('autoStep', { a }) : t('restored', { name: rec.name }));
+    } else { restoreParams(); toast(t('restored', { name: rec.name })); }
     showForget(true);
-    toast(t('restored', { name: rec.name }));
   } else await loadUnit(true);
   $('loading').classList.add('hidden');
+  setMode(MODE);
+  updateSteps();
 }
 $('btnReset').onclick = () => { Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY); syncAll(); rebuild(); };
 $('btnFit').onclick = () => { R.fit(); R.draw(); };
@@ -1928,9 +2092,10 @@ $('btnPlay').onclick = () => PLAY.on ? stopPlay() : startPlay();
 function setLang(l) {
   if (l === LANG) return;
   LANG = l;
-  try { localStorage.setItem(LANG_KEY, l); } catch (e) {}
+  try { localStorage.setItem(LANG_KEY, l); localStorage.setItem('ms-lang', l); } catch (e) {}
   applyStatic();
   updateInfo();
+  updateSteps();
   if (PLAY.on) { update(false, true); return; }
   if (PR.plate) { showPlate(PR.plate).catch(e => console.error(e)); updateRead(); }
   else if (PR.preview) { showPreview(PR.preview); updateRead(); }
@@ -1944,6 +2109,7 @@ function updateRead() {
   [PR.preview, PR.plate] = keep;
 }
 $('segLang').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLang(b.dataset.v); });
+setMode(MODE, true);
 applyStatic();
 window.__app = { S, Core, get geo() { return geo; }, loadBuffer, rebuild };
 init();

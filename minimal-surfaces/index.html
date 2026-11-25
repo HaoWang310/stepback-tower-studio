@@ -48,11 +48,25 @@ td a{color:#fff;text-decoration:none;border-bottom:1px solid #3A414B}
 .back:hover{color:#fff}
 @media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:5.5em}.stack td::before{content:attr(data-l);float:inline-start;width:5em;margin-inline-start:-5.5em;color:var(--mute)}}
 #viewer{position:fixed;inset:0}
-.side{position:absolute;top:0;left:0;bottom:0;width:var(--sw,380px);display:flex;flex-direction:column;background:#111316;border-right:1px solid #22262c;z-index:2;transition:transform .25s}
+.side{position:absolute;top:52px;left:0;bottom:0;width:var(--sw,380px);display:flex;flex-direction:column;background:#111316;border-right:1px solid #22262c;z-index:2;transition:transform .25s}
 body.sideoff .side{transform:translateX(-100%)}
 body.resizing,body.resizing *{cursor:col-resize!important;user-select:none}
+.steps{position:absolute;top:0;left:0;right:0;height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 18px;background:#0b0c0e;border-bottom:1px solid #22262c;z-index:4}
+.steps .back{height:auto;margin:0;white-space:nowrap}
+.stepper{display:flex;align-items:center;gap:8px;min-width:0}
+.st{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 6px;border-radius:18px;background:#1B1F25;color:#E8ECF2;text-decoration:none;font-size:13px;min-width:0}
+a.st:hover{background:#262B33}
+.st i{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:600;background:#3A3F47}
+.st b{font-weight:600;white-space:nowrap}
+.st small{color:#6F7885;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st.on{background:#E8EAED;color:#0b0d10}.st.on i{background:#0b0d10;color:#fff}.st.on small{color:rgba(0,0,0,.55)}
+.sl{flex:none;width:18px;height:1px;background:#3A3F47}
+.fbtns{display:grid;grid-template-columns:1fr auto;gap:8px}
+.export2{height:46px;padding:0 14px;border:1px solid #3A3F47;border-radius:14px;background:transparent;color:#E8ECF2;font:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer}
+.export2:hover{border-color:#8A94A3}
+.export2 svg{width:16px;height:16px}
 .handle{display:none}
-.shead{padding:18px 22px 12px;border-bottom:1px solid var(--line)}
+.shead{padding:16px 22px 12px;border-bottom:1px solid var(--line)}
 .srow{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 .shead b{display:block;font-weight:600;font-size:19px;letter-spacing:.01em;color:#fff}
 .shead span#v-sub{display:block;color:var(--mute);font-size:13px;margin-top:3px}
@@ -77,7 +91,7 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none}
 .grip{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:3}
 .grip::after{content:'';position:absolute;top:0;bottom:0;left:3px;width:2px;background:transparent;transition:background .15s}
 .grip:hover::after,.grip:focus-visible::after,body.resizing .grip::after{background:#00C8D2}
-.stage{position:absolute;top:0;right:0;bottom:0;left:var(--sw,380px);transition:left .25s}
+.stage{position:absolute;top:52px;right:0;bottom:0;left:var(--sw,380px);transition:left .25s}
 body.sideoff .stage{left:0}
 body.resizing .side,body.resizing .stage{transition:none}
 #c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
@@ -156,6 +170,7 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-of
  .handle i{width:40px;height:5px;border-radius:3px;background:#3A3F47}
  .shead{padding:2px 18px 10px}.sbody{padding:0 18px}.sfoot{padding:10px 18px 14px}
  .grip,.sidebtn,.hint{display:none}
+ .st small,.steps .back span{display:none} .st{padding:0 10px 0 6px} .steps{padding:0 10px}
  body.sideoff .side{transform:none}
  .stage{left:0;bottom:var(--stb,50dvh);transition:bottom .25s}
  #viewer:has(.side[data-snap=peek]) .stage{--stb:150px}
@@ -177,11 +192,20 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-of
   <div id="list" hidden></div>
 </main>
 <div id="viewer">
+  <nav class="steps" id="steps">
+    <button type="button" class="back" id="back">‹ <span data-i18n="目录">目录</span></button>
+    <div class="stepper">
+      <span class="st on"><i>1</i><b data-i18n="单体">单体</b><small id="st1s"></small></span>
+      <span class="sl"></span>
+      <a class="st" id="st2" href="../unit-tower/"><i>2</i><b data-i18n="塔楼">塔楼</b></a>
+      <span class="sl"></span>
+      <a class="st" id="st3" href="../unit-tower/#print"><i>3</i><b data-i18n="打印">打印</b></a>
+    </div>
+    <div class="lang seg2" role="group" data-i18n-aria="语言"><button type="button" data-l="zh">中</button><button type="button" data-l="en">EN</button></div>
+  </nav>
   <aside class="side" id="side" data-i18n-aria="控制面板">
     <div class="handle" id="handle" role="button" tabindex="0" data-i18n-aria="展开"><i></i></div>
     <div class="shead">
-      <div class="srow"><button type="button" class="back" id="back">‹ <span data-i18n="目录">目录</span></button>
-        <div class="lang seg2" role="group" data-i18n-aria="语言"><button type="button" data-l="zh">中</button><button type="button" data-l="en">EN</button></div></div>
       <b id="v-name"></b><span id="v-sub"></span>
       <div class="chips" id="chips"></div>
     </div>
@@ -189,7 +213,8 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-of
     <div class="sfoot">
       <div id="foot-t"></div>
       <div class="stat" id="stat"></div>
-      <button type="button" class="export" id="b-stl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19h14"/></svg><span data-i18n="导出 STL">导出 STL</span></button>
+      <div class="fbtns"><button type="button" class="export" id="b-tower"><span data-i18n="用作塔楼单体 →">用作塔楼单体 →</span></button>
+      <button type="button" class="export2" id="b-stl" data-i18n-title="导出 STL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19h14"/></svg><span>STL</span></button></div>
     </div>
     <div class="grip" id="grip" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="拖动调整侧栏宽度"></div>
   </aside>
@@ -230,7 +255,7 @@ function toast(msg, o){
 let lang = (() => {
   try {
     const q = new URLSearchParams(location.search).get('lang'); if (q === 'zh' || q === 'en') return q;
-    const s = localStorage.getItem('ms-lang'); if (s === 'zh' || s === 'en') return s;
+    const s = localStorage.getItem('ms-lang') || localStorage.getItem('unitTower.lang'); if (s === 'zh' || s === 'en') return s;
   } catch (e) {}
   const l = (navigator.languages && navigator.languages[0]) || navigator.language || '';
   return /^zh/i.test(l) ? 'zh' : 'en';
@@ -285,6 +310,9 @@ const EN = {
   '晶格边竖直':'lattice edge vertical', '晶格对角竖直':'lattice diagonal vertical', 'x 方向竖直':'x vertical', 'y 方向竖直':'y vertical',
   '这个曲面每段面数较多，最多 {n} 段':'This surface is heavy per segment — {n} segments max',
   // 分组 / 侧栏
+  '竖向叠加':'Vertical stacking', '单体':'Unit', '打印':'Print', '用作塔楼单体 →':'Use as tower unit →',
+  '单体已存好，正在打开塔楼生成器…':'Unit saved — opening the tower generator…', '这里不能直接跳转：已下载单体 STL（1 层 = 3.6 m），拖进塔楼生成器即可':'Cannot jump from here: the unit STL was downloaded (one floor = 3.6 m) — drop it into the tower generator',
+  '保存单体失败，请重试':'Could not save the unit — please try again',
   '外观':'Appearance', '形体参数':'Form', '塔楼':'Tower', '摆放':'Placement', '组合':'Mirror array',
   '收起侧栏':'Hide panel', '展开侧栏':'Show panel', '拖动调整侧栏宽度':'Drag to resize the panel', '拖动旋转 · 滚轮缩放 · 双击回到原图视角':'Drag to orbit · scroll to zoom · double-click to reset view',
   '层数 {n} · 朝向 {o}':'Segments {n} · orientation {o}', '落地面 {f}':'Base face {f}', '已翻转':'flipped', '已镜像':'mirrored', '已转 {n}°':'rotated {n}°',
@@ -1224,12 +1252,26 @@ function applyStatic(){
 }
 function setLang(l){
   if (l === lang) return; lang = l;
-  try { localStorage.setItem('ms-lang', l); } catch (e) {}
+  try { localStorage.setItem('ms-lang', l); localStorage.setItem('unitTower.lang', l); } catch (e) {}
   applyStatic(); renderHome();
   if (S){ setupPanel(); syncUI(); setTitle(); setPanel(!document.body.classList.contains('sideoff')); if (relang) relang(); }
 }
 document.addEventListener('click', e => { const b = e.target.closest('.lang button'); if (b) setLang(b.dataset.l); });
 applyStatic();
+
+/* ---------- 和塔楼生成器的交接（同一网站上用浏览器本地存储，其他地方改为下载 STL） ---------- */
+const ON_PAGES = /^https?:$/.test(location.protocol) && /\/minimal-surfaces\//.test(location.pathname);
+const TOWER_URL = ON_PAGES ? '../unit-tower/' : 'https://haowang310.github.io/stepback-tower-studio/unit-tower/';
+for (const [id, h] of [['#st2', ''], ['#st3', '#print']]){ const a = $(id); if (a){ a.href = TOWER_URL + h; if (!ON_PAGES){ a.target = '_blank'; a.rel = 'noopener'; } } }
+function idbPutUnit(rec){
+  return new Promise((res, rej) => {
+    if (!window.indexedDB) return rej(new Error('no indexedDB'));
+    const q = indexedDB.open('unitTower', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('files');
+    q.onerror = () => rej(q.error);
+    q.onsuccess = () => { const db = q.result, tx = db.transaction('files', 'readwrite'); tx.objectStore('files').put(rec, 'last'); tx.oncomplete = () => { db.close(); res(); }; tx.onerror = () => rej(tx.error); };
+  });
+}
 
 /* ---------- 预览器 ---------- */
 /* 侧栏：拖动调宽、收起；窄屏变成底部上拉面板（收起 / 半屏 / 全屏） */
@@ -1273,7 +1315,7 @@ function setupPanel(){
   const sh = k => SHARED.find(x => x[0] === k), ori = S.spec.find(([k]) => k === 'ori');
   $('#rows').innerHTML = grp('look', '外观', themeHTML())
     + grp('form', '形体参数', S.spec.filter(([k]) => k !== 'ori').map(rowHTML).join('') + rowHTML(sh('op')))
-    + grp('tower', '塔楼', rowHTML(sh('fl')) + (ori ? rowHTML(ori) : ''))
+    + grp('tower', '竖向叠加', rowHTML(sh('fl')) + (ori ? rowHTML(ori) : ''))
     + grp('place', '摆放', placeHTML())
     + grp('combo', '组合', comboHTML());
   $('#foot-t').innerHTML = rowHTML(sh('t'));
@@ -1471,7 +1513,7 @@ function refView(){
   camera.fov = THREE.MathUtils.radToDeg(2*Math.atan(radius*1.04/d/Math.min(1, camera.aspect)));
   camera.updateProjectionMatrix(); controls.update();
 }
-function setTitle(){ if (!S) return; $('#v-name').textContent = S.no + ' · ' + T(S.name); $('#v-sub').textContent = T(S.zh); $('#c').setAttribute('aria-label', T('{name} 极小曲面三维预览，拖动旋转，滚轮缩放', {name:T(S.name)})); }
+function setTitle(){ if (!S) return; const st = $('#st1s'); if (st) st.textContent = S.no + ' · ' + T(S.name); $('#v-name').textContent = S.no + ' · ' + T(S.name); $('#v-sub').textContent = T(S.zh); $('#c').setAttribute('aria-label', T('{name} 极小曲面三维预览，拖动旋转，滚轮缩放', {name:T(S.name)})); }
 function openSurface(x){
   if (S !== x){
     S = x; P = {...x.preset, mir: !!x.pov}; for (const [k,,,,,,d] of SHARED) if (P[k] === undefined) P[k] = d;
@@ -1638,6 +1680,62 @@ function stl(){
   }
   return new Uint8Array(buf);
 }
+// 单体 → 塔楼：开放中面（按当前摆放 / 组合），Z 朝上，一个单体 = 一层 3.6 m
+function unitSTL(){
+  const {Pp, T} = offsetBase(), n = Pp.length/3;
+  const lo = [Infinity,Infinity,Infinity], hi = [-Infinity,-Infinity,-Infinity], Q = new Float64Array(n*3);
+  for (let v=0; v<n; v++){ const p = [Pp[v*3], -Pp[v*3+2], Pp[v*3+1]]; for (let k=0; k<3; k++){ Q[v*3+k] = p[k]; if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; } }
+  const s = 3.6/((hi[2]-lo[2]) || 1), cx = (lo[0]+hi[0])/2, cy = (lo[1]+hi[1])/2;
+  const nT = T.length/3, buf = new ArrayBuffer(84 + 50*nT), dv = new DataView(buf);
+  const head = (S.no + ' ' + S.name + ' unit, m, Z up').replace(/[^\x20-\x7e]/g, '-').slice(0, 80);
+  for (let i=0; i<head.length; i++) dv.setUint8(i, head.charCodeAt(i));
+  dv.setUint32(80, nT, true);
+  const p = v => [(Q[v*3]-cx)*s, (Q[v*3+1]-cy)*s, (Q[v*3+2]-lo[2])*s];
+  let o = 84;
+  for (let k=0; k<nT; k++){
+    const a = p(T[k*3]), b = p(T[k*3+1]), c = p(T[k*3+2]);
+    const ux = b[0]-a[0], uy = b[1]-a[1], uz = b[2]-a[2], vx = c[0]-a[0], vy = c[1]-a[1], vz = c[2]-a[2];
+    const nx = uy*vz-uz*vy, ny = uz*vx-ux*vz, nz = ux*vy-uy*vx, ln = Math.hypot(nx, ny, nz) || 1;
+    for (const f of [nx/ln, ny/ln, nz/ln, ...a, ...b, ...c]){ dv.setFloat32(o, f, true); o += 4; }
+    dv.setUint16(o, 0, true); o += 2;
+  }
+  return buf;
+}
+function unitThumb(){
+  try {
+    renderer.render(scene, camera);
+    const src = renderer.domElement, c = document.createElement('canvas'), z = 240; c.width = c.height = z;
+    const g = c.getContext('2d'), m = Math.min(src.width, src.height);
+    g.fillStyle = '#000'; g.fillRect(0, 0, z, z);
+    g.drawImage(src, (src.width-m)/2, (src.height-m)/2, m, m, 0, 0, z, z);
+    return c.toDataURL('image/jpeg', 0.82);
+  } catch (e){ return ''; }
+}
+async function sendToTower(){
+  if (!cur) return;
+  const buf = unitSTL();
+  const slug = (S.name + '').normalize('NFKD').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unit';
+  const name = `${S.no}-${slug}-${S.spec.map(([k]) => k + (+P[k]).toFixed(k === 'ori' ? 0 : 2).replace(/\.?0+$/, '')).join('-')}.stl`;
+  if (!ON_PAGES && dl){
+    try { await dl.save({filename: name.replace(/\.stl$/, '.zip'), data: zip(name, new Uint8Array(buf))}); toast('这里不能直接跳转：已下载单体 STL（1 层 = 3.6 m），拖进塔楼生成器即可'); }
+    catch (e){ toast('导出失败，请重试'); }
+    return;
+  }
+  if (!ON_PAGES){
+    const url = URL.createObjectURL(new Blob([buf], {type:'model/stl'})), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast('这里不能直接跳转：已下载单体 STL（1 层 = 3.6 m），拖进塔楼生成器即可'); return;
+  }
+  const params = S.spec.filter(([k]) => k !== 'ori').map(([k, lab,,,,f]) => [lab, EN[lab] || lab, f(+P[k])]);
+  if (P.fl > 0) params.push(['竖向叠加', 'Vertical stacking', String(P.fl)]);
+  if (cur.cmult) params.push(['组合', 'Mirror array', '×' + cur.cmult]);
+  const meta = {src:'catalogue', id:S.id, no:S.no, name_zh:S.no + ' · ' + S.name, name_en:S.no + ' · ' + (EN[S.name] || S.name), params, thumb:unitThumb(), fresh:true};
+  try { await idbPutUnit({name, buf, at:Date.now(), meta}); }
+  catch (e){ toast('保存单体失败，请重试'); return; }
+  toast('单体已存好，正在打开塔楼生成器…');
+  setTimeout(() => { location.href = TOWER_URL; }, 350);
+}
+$('#b-tower').addEventListener('click', sendToTower);
 const CRC = (() => { const t = new Uint32Array(256); for (let n=0; n<256; n++){ let c = n; for (let k=0; k<8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 function crc32(u8){ let c = 0xFFFFFFFF; for (let i=0; i<u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
 function put(dv, list){ list.forEach(([o,v,s]) => s === 4 ? dv.setUint32(o, v, true) : dv.setUint16(o, v, true)); }
