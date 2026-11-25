@@ -737,14 +737,22 @@ function povMatrix(rots){
   let M = I3; for (const [a,b,g] of rots) M = mul(mul(Rz(r(g)), mul(Ry(r(b)), Rx(r(a)))), M);
   return mul(mul([1,0,0, 0,1,0, 0,0,-1], M), [1,0,0, 0,0,-1, 0,1,0]);
 }
+// 原作视角拆成两部分：模型只做「镜像 / 上下翻转」（保持竖轴竖直），其余旋转交给相机。
+// 这样打开时画面与原图一致，拖动时与其他曲面一样绕模型自身的竖轴旋转。
+function povDecomp(){
+  const X0 = S.povRot ? povMatrix(S.povRot) : POVX, X = P.mir ? X0 : mul([-1,0,0, 0,1,0, 0,0,1], X0);
+  const det = X[0]*(X[4]*X[8]-X[5]*X[7]) - X[1]*(X[3]*X[8]-X[5]*X[6]) + X[2]*(X[3]*X[7]-X[4]*X[6]);
+  const Sx = det < 0 ? [-1,0,0, 0,1,0, 0,0,1] : I3, Fl = X[4] < 0 ? [1,0,0, 0,-1,0, 0,0,-1] : I3;
+  const O = mul(Sx, Fl), Q = mul(X, O);          // X = Q·O，Q 为纯旋转
+  const QT = [Q[0],Q[3],Q[6], Q[1],Q[4],Q[7], Q[2],Q[5],Q[8]];
+  return {O, QT};
+}
 function setGroupMatrix(){
   if (!group) return;
   group.matrixAutoUpdate = false;
   if (S.pov){
-    const X = S.povRot ? povMatrix(S.povRot) : POVX;
-    const m = P.mir ? X : mul([-1,0,0, 0,1,0, 0,0,1], X);
-    const ty = (P.povT ?? S.povT ?? 0) * (cur ? cur.L : 0) / (P.scal || 1.1);
-    group.matrix.set(m[0],m[1],m[2],0, m[3],m[4],m[5],ty, m[6],m[7],m[8],0, 0,0,0,1);
+    const m = povDecomp().O;
+    group.matrix.set(m[0],m[1],m[2],0, m[3],m[4],m[5],0, m[6],m[7],m[8],0, 0,0,0,1);
   } else group.matrix.identity();
   group.matrixWorldNeedsUpdate = true;
 }
@@ -778,8 +786,10 @@ function rebuild(){
 }
 function refView(){
   if (S.pov){
-    const scal = P.scal || 1.1, d = 4*cur.L/scal;
-    controls.target.set(0,0,0); camera.position.set(0, 0, d);
+    const scal = P.scal || 1.1, d = 4*cur.L/scal, ty = (P.povT ?? S.povT ?? 0) * cur.L / scal, {QT} = povDecomp();
+    const tgt = mv(QT, [0, -ty, 0]), eye = mv(QT, [0, 0, d]);
+    controls.target.set(tgt[0], tgt[1], tgt[2]); camera.up.set(0, 1, 0);
+    camera.position.set(tgt[0]+eye[0], tgt[1]+eye[1], tgt[2]+eye[2]);
     camera.fov = camera.aspect >= 1 ? 40 : THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(Math.PI/9)/camera.aspect));
     camera.near = d/100; camera.far = d*20; camera.updateProjectionMatrix(); controls.update(); return;
   }
@@ -810,7 +820,7 @@ $('#rows').addEventListener('input', e => {
 });
 $('#chips').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.id === 'b-mir'){ P.mir = !P.mir; syncUI(); setGroupMatrix(); return; }
+  if (b.id === 'b-mir'){ P.mir = !P.mir; syncUI(); setGroupMatrix(); refView(); return; }
   Object.assign(P, S.presets[+b.dataset.i]); applyPalette(); syncUI(); rebuild(); refView();
 });
 $('#b-reset').addEventListener('click', refView);
