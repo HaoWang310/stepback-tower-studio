@@ -70,6 +70,12 @@ td a{color:#fff;text-decoration:none;border-bottom:1px solid #3A414B}
 .swc.on i{color:#fff}
 .swc.orig{background:conic-gradient(#5E6A47 0 25%,#A9AECB 0 50%,#CDB55C 0 75%,#1AA6CC 0)}
 .sws{padding-bottom:14px}
+.cseg button i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-left:3px;vertical-align:2px}
+.cseg button.on i{box-shadow:0 0 0 1px #0b0d10}
+.place .crow{margin-top:8px}
+.cinfo{font-size:12px;color:#AEB6C2;line-height:1.55;margin-top:8px;display:grid;gap:6px}
+.cinfo small{font-size:11px;color:#7C8592}
+.cinfo b{font-weight:600}
 .place{margin:8px 0 6px;padding:12px 0 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .place .ph{font-size:13px;font-weight:600;color:#fff;margin-bottom:8px}
 .place .pl{display:flex;align-items:baseline;gap:8px;font-size:13px;color:#C9D1DC;margin:8px 0 6px}
@@ -732,7 +738,7 @@ const FACE_R = [I3, [1,0,0, 0,-1,0, 0,0,-1], [1,0,0, 0,0,-1, 0,1,0], [1,0,0, 0,0
 const FACE_NAME = ['底','顶','前','后','左','右'];
 const HINT = {s001:['形状不变','形状不变'], s002:['形状不变','左旋 ↔ 右旋'], s003:['形状不变','形状不变'], s004:['形状不变','形状不变'], s005:['= 转 90°','形状不变'], s006:['会得到新形体','形状不变']};
 const placed = () => P.pf >= 0 || !!P.pmr || !!P.prt;
-const povView = () => S.pov && !(P.fl > 0) && !placed();
+const povView = () => S.pov && !(P.fl > 0) && !placed() && !comboOn();
 function placeM(){
   let M = FACE_R[Math.max(0, P.pf)];
   if (P.pmr) M = mul([-1,0,0, 0,1,0, 0,0,1], M);
@@ -770,6 +776,144 @@ function contactLines(groundAtMax){
   for (let i=0; i<B.length; i+=2){ const a = B[i], c = B[i+1];
     if (Math.abs(Pp[a*3+1]-y0) < tol && Math.abs(Pp[c*3+1]-y0) < tol) out.push(Pp[a*3],Pp[a*3+1],Pp[a*3+2], Pp[c*3],Pp[c*3+1],Pp[c*3+2]); }
   return new Float32Array(out);
+}
+
+/* ---------- 组合：沿平整截断面镜像 ----------
+   先镜像中面，接缝上的点精确对齐（加厚时自动焊成一个实体）；
+   接缝质量按实测折角分级：光滑（对称面，= 延续曲面）/ 微折 / 折角（接缝够长且不贴合才允许）。 */
+const CFACE = [[1,-1],[1,1],[2,1],[2,-1],[0,-1],[0,1]];   // 与 FACE_NAME 同序：底 顶 前 后 左 右
+const CQ = {s:['光滑','#00C8D2'], g:['微折','#EBBE46'], c:['折角','#FF5A1F'], n:['折角','#FF5A1F'], x:['不平整','#4A515C']};
+const comboOn = () => !!(P.cf && P.cf.length);
+function bbox3(pos){ const lo=[Infinity,Infinity,Infinity], hi=[-Infinity,-Infinity,-Infinity];
+  for (let i=0; i<pos.length; i++){ const k=i%3; if (pos[i]<lo[k]) lo[k]=pos[i]; if (pos[i]>hi[k]) hi[k]=pos[i]; } return [lo, hi]; }
+// 在合并顶点后的网格上取真正的边界边（与「落地面」判断用同一个基底）
+function faceSeam(base, ax, v, tol, ext){
+  const {Pp, T, B, n} = base, onP = a => Math.abs(Pp[a*3+ax]-v) < tol, tri = new Map();
+  for (let i=0; i<T.length; i+=3) for (let e=0; e<3; e++){ const a = T[i+e], b = T[i+(e+1)%3]; if (onP(a) && onP(b)) tri.set(a < b ? a*n+b : b*n+a, i); }
+  let len = 0, sk = 0; const ks = [];
+  for (let j=0; j<B.length; j+=2){
+    const a = B[j], b = B[j+1]; if (!onP(a) || !onP(b)) continue;
+    const i = tri.get(a < b ? a*n+b : b*n+a); if (i === undefined) continue;
+    const p = T[i]*3, q = T[i+1]*3, r = T[i+2]*3;
+    const ux = Pp[q]-Pp[p], uy = Pp[q+1]-Pp[p+1], uz = Pp[q+2]-Pp[p+2], vx = Pp[r]-Pp[p], vy = Pp[r+1]-Pp[p+1], vz = Pp[r+2]-Pp[p+2];
+    const nn = [uy*vz-uz*vy, uz*vx-ux*vz, ux*vy-uy*vx], nl = Math.hypot(nn[0], nn[1], nn[2]) || 1;
+    const k = 2*Math.asin(Math.min(1, Math.abs(nn[ax])/nl))*180/Math.PI;
+    const l = Math.hypot(Pp[a*3]-Pp[b*3], Pp[a*3+1]-Pp[b*3+1], Pp[a*3+2]-Pp[b*3+2]);
+    len += l; sk += k*l; ks.push(k);
+  }
+  const o = [0,1,2].filter(k => k !== ax), frac = len / (2*(ext[o[0]]+ext[o[1]]));
+  if (frac < 0.3 || !ks.length) return {q:'x', frac};
+  ks.sort((x, y) => x-y);
+  const km = sk/len, kx = ks[ks.length-1], k90 = ks[Math.min(ks.length-1, Math.floor(0.9*(ks.length-1)))];
+  const q = km <= 2 && kx <= 5 ? 's' : km <= 20 && kx <= 30 ? 'g' : frac >= 0.5 && k90 < 150 ? 'c' : 'n';
+  return {q, frac, km, kx, k90};
+}
+function seamStats(pos, idx, only, base){
+  base = base || baseFrom(pos, idx);
+  const [lo, hi] = bbox3(base.Pp), ext = [0,1,2].map(k => hi[k]-lo[k]), tol = 1e-3*Math.max(...ext);
+  return CFACE.map(([ax, s], i) => only !== undefined && i !== only ? null : faceSeam(base, ax, s > 0 ? hi[ax] : lo[ax], tol, ext));
+}
+// 沿某个外框面连续镜像 n 份（奇数份翻转绕向，保持两侧颜色连续）；接缝点写成同一个精确数值
+function mirrorN(pos, idx, lin, ax, side, n){
+  const [lo, hi] = bbox3(pos), ext = Math.max(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2]), tol = 1e-4*ext;
+  const v = side > 0 ? hi[ax] : lo[ax], u = side > 0 ? lo[ax] : hi[ax], w = hi[ax]-lo[ax], nv = pos.length/3;
+  const pl = []; for (let j=0; j<=n; j++) pl.push(v + side*w*j);
+  const tag = new Int8Array(nv); for (let i=0; i<nv; i++){ const d = pos[i*3+ax]; tag[i] = Math.abs(d-v) < tol ? 1 : Math.abs(d-u) < tol ? 2 : 0; }
+  const P2 = new Float32Array(nv*3*n), I2 = new Uint32Array(idx.length*n), L2 = new Uint32Array(lin.length*n);
+  for (let k=0; k<n; k++){
+    const odd = k % 2, ob = k*nv*3;
+    for (let i=0; i<nv; i++){
+      P2[ob+i*3] = pos[i*3]; P2[ob+i*3+1] = pos[i*3+1]; P2[ob+i*3+2] = pos[i*3+2];
+      const x = pos[i*3+ax], t = tag[i];
+      P2[ob+i*3+ax] = k === 0 ? (t === 1 ? v : t === 2 ? u : x)
+        : odd ? (t === 1 ? pl[k-1] : t === 2 ? pl[k] : 2*v - x + side*w*(k-1))
+              : (t === 1 ? pl[k] : t === 2 ? pl[k-1] : x + side*w*k);
+    }
+    const oi = k*idx.length, off = k*nv;
+    for (let j=0; j<idx.length; j+=3){
+      I2[oi+j] = idx[j]+off;
+      I2[oi+j+1] = (odd ? idx[j+2] : idx[j+1])+off; I2[oi+j+2] = (odd ? idx[j+1] : idx[j+2])+off;
+    }
+    const ol = k*lin.length; for (let j=0; j<lin.length; j++) L2[ol+j] = lin[j]+off;
+  }
+  return {pos:P2, idx:I2, lin:L2, planes:pl.slice(0, n-1)};
+}
+// 「截平」：没有平整截断面的曲面（001），沿 +X 方向在中心到边缘之间切一刀
+function cutRaw(res, f){
+  const [lo, hi] = bbox3(res.pos), c = (lo[0]+hi[0])/2, d = c + f*(hi[0]-c);
+  const [Q, I, Ln] = clipPlanes(Array.from(res.pos), Array.from(res.idx), Array.from(res.lin), [[1,0,0,d]]);
+  return {pos:Float32Array.from(Q), idx:Uint32Array.from(I), lin:Uint32Array.from(Ln)};
+}
+function comboBuild(res){
+  const rb = baseFrom(res.pos, res.idx), st = seamStats(res.pos, res.idx, undefined, rb), tower = P.fl > 0;
+  if (tower) st[0] = st[1] = {q:'x', tower:true};
+  const needCut = st.every(x => x.q === 'x' && !x.tower) || (tower && st.slice(2).every(x => x.q === 'x'));
+  let base = res, cf = (P.cf || []).slice();
+  if (needCut){
+    st[5] = {q:'cut'};
+    if (cf.includes(5)){ base = cutRaw(res, (P.cx ?? 25)/100); st[5] = Object.assign(seamStats(base.pos, base.idx, 5)[5], {cut:true}); if (st[5].q === 'x') st[5].q = 'g'; else if (st[5].q === 'n') st[5].q = 'c'; }
+  }
+  cf = cf.filter(f => st[f] && !['x','n'].includes(st[f].q)).filter((f, i, a) => a.findIndex(g => CFACE[g][0] === CFACE[f][0]) === i).slice(0, 2);
+  P.cf = cf;
+  if (!cf.length) return Object.assign({}, res, {cstats:st, cneed:needCut, _rb:rb});
+  const per = base.idx.length/3, two = cf.length > 1 ? 2 : 1;
+  let n = Math.max(2, Math.min(8, P.cn || 2));
+  if (per*n*two > 2.5e6){ n = Math.floor(2.5e6/per/two); if (n < 2){ toast('面数太多，不能再组合'); P.cf = []; return Object.assign({}, res, {cstats:st, cneed:needCut}); } toast(`面数较多，最多 ${n} 份`); P.cn = n; }
+  let g = base; const seams = [];
+  cf.forEach((f, i) => { const [ax, s] = CFACE[f], m = mirrorN(g.pos, g.idx, g.lin, ax, s, i === 0 ? n : 2); seams.push([ax, m.planes.map(Math.fround), CQ[st[f].q][1]]); g = m; });
+  // 接缝线：两端都正好落在接缝平面上的三角形边
+  const sI = [], sC = [];
+  for (const [ax, pls, col] of seams){
+    const set = new Set(pls), c = new THREE.Color(col), seen = new Set();
+    for (let i=0; i<g.idx.length; i+=3) for (let e=0; e<3; e++){
+      const a = g.idx[i+e], b = g.idx[i+(e+1)%3], va = g.pos[a*3+ax];
+      if (va !== g.pos[b*3+ax] || !set.has(va)) continue;
+      const key = a < b ? a+'_'+b : b+'_'+a; if (seen.has(key)) continue; seen.add(key);
+      sI.push(a, b); sC.push(c.r, c.g, c.b);
+    }
+  }
+  const mult = n*two;
+  return Object.assign({}, res, {pos:g.pos, idx:g.idx, lin:g.lin, cstats:st, cneed:needCut, cmult:mult, seam:{idx:Uint32Array.from(sI), col:Float32Array.from(sC)}});
+}
+// 当前看到的外框面 → 原始（组合前）坐标里的面
+function rawFace(i){
+  const M = placeM(), [a, s] = CFACE[i];
+  for (let k=0; k<3; k++){ const r = M[a*3+k]*s; if (Math.abs(r) > 0.5) return CFACE.findIndex(([x, y]) => x === k && y === Math.sign(r)); }
+  return i;
+}
+function comboHTML(){
+  return `<div class="pl"><span>组合</span><small>沿平整截断面镜像，接缝焊成一体</small></div>
+    <div class="pseg cseg" role="group" aria-label="镜像组合"><button type="button" data-c="-1">关</button>${FACE_NAME.map((t, i) => `<button type="button" data-c="${i}">${t}<i></i></button>`).join('')}</div>
+    <div class="row crow" id="c-cutrow"><label for="s-cx"><span>截平位置</span><output id="o-cx"></output></label><input type="range" id="s-cx" data-k="cx" min="5" max="90" step="1"></div>
+    <div class="row crow" id="c-nrow"><label for="s-cn"><span>份数</span><output id="o-cn"></output></label><input type="range" id="s-cn" data-k="cn" min="2" max="8" step="1"></div>
+    <div class="cinfo" id="c-info"></div>
+    <div class="ptog" id="c-sw"><span>高亮接缝</span><button type="button" class="sw" data-t="cs" aria-label="高亮接缝"></button></div>`;
+}
+function updateComboUI(){
+  const box = $('#place'); if (!box || !cur || !cur.cstats) return;
+  const st = cur.cstats, cf = P.cf || [], info = [];
+  for (const b of box.querySelectorAll('[data-c]')){
+    const i = +b.dataset.c, dot = b.querySelector('i');
+    if (i < 0){ b.classList.toggle('on', !cf.length); continue; }
+    const rf = rawFace(i), x = st[rf], q = x.q;
+    const ok = !['x','n'].includes(q);
+    b.disabled = !ok; b.classList.toggle('on', cf.includes(rf));
+    if (dot){ dot.style.background = q === 'cut' ? '#E8EAED' : CQ[q] ? CQ[q][1] : '#4A515C'; dot.style.display = ok ? '' : 'none'; }
+    b.title = x.tower ? '塔楼的顶 / 底由「塔楼层数」负责' : q === 'x' ? '这一面不平整，镜像后会有缝' : q === 'n' ? '折角过大或接缝太短：两块几乎不相连，或局部贴成双层' : q === 'cut' ? '先截平再镜像' : `${CQ[q][0]} · 平均 ${x.km.toFixed(0)}° · 最大 ${x.kx.toFixed(0)}°`;
+  }
+  cf.forEach((rf, j) => {
+    const x = st[rf], vi = CFACE.findIndex((_, i) => rawFace(i) === rf), nm = FACE_NAME[vi], [lab, col] = CQ[x.q] || ['', '#fff'];
+    const tip = x.cut ? '截平后镜像' : x.q === 's' ? '= 延续曲面，不出新形体' : x.q === 'g' ? '新形体，接缝基本连续' : '接缝成一条脊线，打印时注意';
+    info.push(`<div><b style="color:${col}">${nm} · ${lab}</b> 平均 ${x.km.toFixed(0)}° · 最大 ${x.kx.toFixed(0)}°<br><small>${j === 0 && cf.length ? `×${P.cn} · ` : '×2 · '}${tip}</small></div>`);
+  });
+  if (!cf.length) info.push(`<small>${cur.cneed ? '这个曲面没有平整截断面：选「右」会先截平再镜像' : '点 1–2 个面（不同方向）；圆点颜色 = 接缝质量'}</small>`);
+  else if (cur.cmult) info.push(`<small>共 ${cur.cmult} 份 · ${(cur.idx.length/3).toLocaleString()} 个三角面</small>`);
+  $('#c-info').innerHTML = info.join('');
+  const cutOn = cf.some(f => st[f] && st[f].cut);
+  $('#c-cutrow').style.display = cutOn ? '' : 'none'; $('#c-nrow').style.display = cf.length ? '' : 'none'; $('#c-sw').style.display = cf.length ? '' : 'none';
+  for (const [k, mn, mx, fmt] of [['cx',5,90,v => v+'%'],['cn',2,8,v => '×'+v]]){
+    const sl = $('#s-'+k); sl.value = P[k]; sl.style.setProperty('--p', ((P[k]-mn)/(mx-mn)*100)+'%'); $('#o-'+k).textContent = fmt(P[k]);
+  }
 }
 
 /* ---------- 曲面库 ---------- */
@@ -946,6 +1090,7 @@ function placeHTML(){
     <div class="pseg" role="group" aria-label="落地面"><button type="button" data-f="-1">原样</button>${FACE_NAME.map((t, i) => `<button type="button" data-f="${i}">${t}</button>`).join('')}</div>
     <div class="pl"><span>翻转</span></div>
     <div class="pbtns"><button type="button" data-a="flip">上下翻转<small id="h-flip"></small></button><button type="button" data-a="mir">镜像<small id="h-mir"></small></button><button type="button" data-a="rot">绕竖轴 90°<small></small></button></div>
+    ${comboHTML()}
     <div class="ptog"><span>显示对齐平面</span><button type="button" class="sw" data-t="pg" aria-label="显示对齐平面"></button></div>
     <div class="ptog"><span>高亮接触边</span><button type="button" class="sw" data-t="pc" aria-label="高亮接触边"></button></div></div>`;
 }
@@ -961,6 +1106,7 @@ function updatePlaceUI(){
   $('#h-mir').textContent = h[1]; $('#h-mir').className = /不变|= 转/.test(h[1]) ? 'same' : 'diff';
   box.querySelector('[data-a="rot"]').disabled = tower;
   for (const b of box.querySelectorAll('[data-t]')) b.classList.toggle('on', !!P[b.dataset.t]);
+  updateComboUI();
 }
 function syncUI(){
   for (const [k,,mn,mx0,,fmt] of specAll()){
@@ -997,6 +1143,7 @@ const back  = new THREE.MeshLambertMaterial({side:THREE.BackSide,  polygonOffset
 const lineMat = new THREE.LineBasicMaterial({color:0x1b1e1a, transparent:true, opacity:0.55});
 const rimMat = new THREE.MeshLambertMaterial({side:THREE.DoubleSide});
 const contactMat = new THREE.LineBasicMaterial({color:0x00C8D2});
+const seamMat = new THREE.LineBasicMaterial({vertexColors:true});
 const groundMat = new THREE.MeshBasicMaterial({color:0x1A1D22, transparent:true, opacity:0.55, side:THREE.DoubleSide, depthWrite:false});
 let ground = null;
 let group = null, wire = true, radius = 1;
@@ -1039,9 +1186,10 @@ function setGroupMatrix(){
 }
 
 function rebuild(){
-  const res = P.fl > 0 ? towerBuild(S, P) : S.build(P);
+  let res = P.fl > 0 ? towerBuild(S, P) : S.build(P);
   if (!res){ toast('这组参数下周期条件无解，换一个扭转值试试'); return; }
-  cur = res; cur.raw = res.pos.slice(); cur.rawIdx = res.idx; cur._rawBase = null;
+  res = comboBuild(res);
+  cur = res; cur.raw = res.pos.slice(); cur.rawIdx = res.idx; cur._rawBase = res._rb || null;
   applyPlacement(); faceFlags(); updatePlaceUI();
   show();
 }
@@ -1064,7 +1212,15 @@ function show(){
   group = new THREE.Group();
   group.add(new THREE.Mesh(g, front), new THREE.Mesh(g, back));
   if (rimG) group.add(new THREE.Mesh(rimG, rimMat));
-  const lines = new THREE.LineSegments(lg, lineMat); lines.visible = wire; group.add(lines);
+  const lines = new THREE.LineSegments(lg, lineMat); lines.name = 'wire'; lines.visible = wire; group.add(lines);
+  if (P.cs && cur.seam && cur.seam.idx.length){
+    const b = offsetBase(), half = P.t > 0 ? P.t/MM/2 : 0, sides = half > 0 ? [half, -half] : [0], si = cur.seam.idx, sc = cur.seam.col;
+    const sp = new Float32Array(si.length*3*sides.length), cc = new Float32Array(si.length*3*sides.length); let o = 0;
+    for (const h of sides) for (let i=0; i<si.length; i++){ const v = b.remap[si[i]], c = (i>>1)*3;
+      for (let k=0; k<3; k++){ sp[o+k] = b.Pp[v*3+k] + b.N[v*3+k]*h*1.02; cc[o+k] = sc[c+k]; } o += 3; }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3)); sg.setAttribute('color', new THREE.BufferAttribute(cc, 3));
+    group.add(new THREE.LineSegments(sg, seamMat));
+  }
   const groundAtMax = povView() && povDecomp().O[4] < 0;
   if (P.pc){ const cl = contactLines(groundAtMax); if (cl.length){ const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.BufferAttribute(cl, 3)); group.add(new THREE.LineSegments(cg, contactMat)); } }
   scene.add(group); setGroupMatrix();
@@ -1082,7 +1238,7 @@ function show(){
   if (dir.lengthSq() > 0 && radius > 0) camera.position.copy(controls.target).add(dir.multiplyScalar(newR/radius));
   radius = newR;
   camera.near = radius/100; camera.far = radius*40; camera.updateProjectionMatrix();
-  $('#stat').textContent = `${(cur.idx.length/3).toLocaleString()} 个三角面 · ${Math.round(s.x*MM)} × ${Math.round(s.z*MM)} × ${Math.round(s.y*MM)} mm${P.t > 0 ? ' · 厚 '+P.t.toFixed(1)+' mm' : ''}${cur.R ? ' · R = '+cur.R.toFixed(4) : ''}${cur.note && P.fl > 0 ? ' · '+cur.note : ''}`;
+  $('#stat').textContent = `${(cur.idx.length/3).toLocaleString()} 个三角面 · ${Math.round(s.x*MM)} × ${Math.round(s.z*MM)} × ${Math.round(s.y*MM)} mm${P.t > 0 ? ' · 厚 '+P.t.toFixed(1)+' mm' : ''}${cur.R ? ' · R = '+cur.R.toFixed(4) : ''}${cur.note && P.fl > 0 ? ' · '+cur.note : ''}${cur.cmult ? ' · 组合 ×'+cur.cmult : ''}`;
 }
 function refView(){
   if (povView()){
@@ -1103,7 +1259,7 @@ function openSurface(x){
   if (S !== x){
     S = x; P = {...x.preset, mir: !!x.pov}; for (const [k,,,,,,d] of SHARED) if (P[k] === undefined) P[k] = d;
     for (const [k,,mn] of x.spec) if (P[k] === undefined) P[k] = mn;
-    Object.assign(P, {pf: -1, pmr: 0, prt: 0, pg: 1, pc: 1});
+    Object.assign(P, {pf: -1, pmr: 0, prt: 0, pg: 1, pc: 1, cf: [], cn: 2, cx: 25, cs: 1});
     applyPalette();
     setupPanel(); syncUI(); radius = 0; rebuild();
   }
@@ -1123,6 +1279,15 @@ $('#rows').addEventListener('click', e => {
   const b = e.target.closest('#place button'); if (!b || b.disabled || !cur) return;
   const opp = [1,0,3,2,5,4];
   if (b.dataset.t){ P[b.dataset.t] = P[b.dataset.t] ? 0 : 1; updatePlaceUI(); show(); return; }
+  if (b.dataset.c !== undefined){
+    const i = +b.dataset.c, cf = (P.cf || []).slice();
+    if (i < 0) P.cf = [];
+    else { const rf = rawFace(i), j = cf.indexOf(rf);
+      if (j >= 0) cf.splice(j, 1);
+      else { const k = cf.findIndex(f => CFACE[f][0] === CFACE[rf][0]); if (k >= 0) cf[k] = rf; else { if (cf.length >= 2) cf.pop(); cf.push(rf); } }
+      P.cf = cf; }
+    rebuild(); setGroupMatrix(); refView(); return;
+  }
   if (b.dataset.f !== undefined) P.pf = +b.dataset.f;
   else if (b.dataset.a === 'flip') P.pf = opp[Math.max(0, P.pf)];
   else if (b.dataset.a === 'mir') P.pmr = P.pmr ? 0 : 1;
@@ -1145,7 +1310,7 @@ $('#chips').addEventListener('click', e => {
 });
 $('#b-reset').addEventListener('click', refView);
 $('#b-wire').addEventListener('click', e => {
-  wire = !wire; if (group) group.children[2].visible = wire;
+  wire = !wire; if (group){ const w = group.getObjectByName('wire'); if (w) w.visible = wire; }
   const b = e.currentTarget; b.classList.toggle('on', wire); b.setAttribute('aria-pressed', wire);
 });
 
