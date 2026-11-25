@@ -15,6 +15,8 @@ Export: STL (merged), OBJ and 3DM (one object per floor), in the units of the up
 
 Single file, no build step; preview uses plain WebGL2 instancing.
 
+**Play** (▶ in the top-right of the view): a 12 s generation sequence — unit (Offset Mesh) → floors drop in one by one (Series + Move) → waist (Series + Reverse List + Merge → Scale NU, about each floor's centroid) → twist (Series → Rotate) — with captions naming the gh components, then a continuous orbit (20 s per turn, gentle up-and-down). Dragging pauses the camera for 2 s; changing a parameter stops it.
+
 **Language**: Chinese / English (中 | EN switch next to the title). The page follows the browser/system language on first visit and then remembers the last choice; exported ZIP folders, file names, `assembly.svg`/`组装图.svg` and the notes follow the interface language.
 
 ## Print parts (Bambu Lab A1, 256 × 256 × 256 mm)
