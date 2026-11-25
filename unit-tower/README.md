@@ -22,5 +22,6 @@ Panel **打印分件** exports every floor as two printable pieces in one ZIP:
 - Each floor is cut at the unit's mid-height. `N-1` = upper half, flipped so its flat roof lies on the plate; `N-2` = lower half. Both print as open troughs, so the hollow arms need no internal supports (for the sample unit the estimated support volume drops by about 84 %).
 - Scale 1:300 / 1:500 (default) / 1:750 / 1:1000; print wall 1.2 mm by default. Each floor is scaled first and then thickened, so the wall stays 1.2 mm on the small waist floors too.
 - A raised 7-segment floor label (`18-1`, `18-2`) sits on the trough floor inside an arm, hidden once assembled; file names match (`18-1.stl`, `18-2.stl`).
-- The ZIP also has `组装图.svg` (angle and scale per floor, plate assignment) and `说明.txt`. Floors are glued; there are no alignment pins yet.
+- **Plate packing**: pieces are packed onto 256 × 256 mm plates by their real outline (first-fit decreasing on a 1 mm raster, rotations 0°/45°, pieces from any floor may share a plate), plate margin 10 mm and 6 mm between pieces by default (both editable). The sample tower needs 13 plates. **排盘预览** shows each plate in 3D.
+- The ZIP has `按盘/` (one STL per plate, pieces already placed, named e.g. `盘01_1-2_2-2_17-2_39-2_40-2.stl`), `单片/` (one STL per piece), `组装图.svg` (angle, scale and plate per floor) and `说明.txt`. Floors are glued; there are no alignment pins yet.
 - Only open-surface units can be cut this way (closed solids are not supported yet).

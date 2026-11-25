@@ -65,6 +65,9 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 #toast.show{opacity:1}
 #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--t2);text-align:center;padding:30px}
 .hidden{display:none!important}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chips button{min-width:34px;border:0.5px solid #48484a;background:transparent;color:var(--t2);font:inherit;font-size:12px;padding:5px 0;border-radius:8px;cursor:pointer}
+.chips button.on{background:var(--t1);color:#000;border-color:var(--t1)}
 @media (max-width:760px){
   #app{flex-direction:column-reverse;padding:8px;gap:8px}
   #panel{width:auto;height:46%;border-radius:14px}
@@ -131,12 +134,16 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       <input type="range" id="rWall" min="0.4" max="3" step="0.1">
       <div class="row"><label>层号</label>
         <div class="seg" id="segLabel"><button data-v="1" class="on">压凸字</button><button data-v="0">不压</button></div></div>
+      <div class="row"><label>盘边留白</label><span><input class="num" id="nMargin" type="number" step="1" style="width:40px"><span class="unit">mm</span></span></div>
+      <div class="row"><label>零件间距</label><span><input class="num" id="nGapP" type="number" step="1" style="width:40px"><span class="unit">mm</span></span></div>
       <div class="read" id="readPrint"></div>
       <div class="row"><label>预览第</label><span><input class="num" id="nPrev" type="number" step="1" value="1" style="width:40px"><span class="unit">层分件</span></span></div>
       <div class="btns" style="grid-template-columns:1fr 1fr;margin-top:12px">
         <button class="btn" id="btnPrev">预览分件</button>
-        <button class="btn primary" id="btnPrint">导出 ZIP</button>
+        <button class="btn" id="btnPlates">排盘预览</button>
       </div>
+      <div id="plateChips" class="chips hidden"></div>
+      <button class="btn primary" id="btnPrint" style="width:100%;margin-top:8px">导出 ZIP</button>
     </div>
 
     <div class="sec">
@@ -710,13 +717,19 @@ const Core = (() => {
         Vs[i * 3 + 2] = V[i * 3 + 2];
       }
       const sh = shell(Vs, part.F, wallMM / k);
+      let sx0 = Infinity, sx1 = -Infinity, sy0 = Infinity, sy1 = -Infinity;
+      for (let i = 0; i < Vs.length; i += 3) {
+        const x = (Vs[i] - c[0]) * k, y = (Vs[i + 1] - c[1]) * k * (flip ? -1 : 1);
+        if (x < sx0) sx0 = x; if (x > sx1) sx1 = x; if (y < sy0) sy0 = y; if (y > sy1) sy1 = y;
+      }
       const W = new Float64Array(sh.V.length);
       for (let i = 0; i < sh.V.length; i += 3) {
-        const x = sh.V[i] * k, y = sh.V[i + 1] * k, z = sh.V[i + 2] * k;
+        const x = (sh.V[i] - c[0]) * k, y = (sh.V[i + 1] - c[1]) * k, z = sh.V[i + 2] * k;
         W[i] = x; W[i + 1] = flip ? -y : y; W[i + 2] = flip ? -z : z;
       }
       const bb = bbox(W);
-      for (let i = 0; i < W.length; i += 3) { W[i] -= (bb.min[0] + bb.max[0]) / 2; W[i + 1] -= (bb.min[1] + bb.max[1]) / 2; W[i + 2] -= bb.min[2]; }
+      const ox = (sx0 + sx1) / 2, oy = (sy0 + sy1) / 2;
+      for (let i = 0; i < W.length; i += 3) { W[i] -= ox; W[i + 1] -= oy; W[i + 2] -= bb.min[2]; }
       let out = { V: W, F: sh.F, placed: false };
       if (labels) out = addLabel(W, sh.F, floorNo + tag, wallMM, labelMM);
       out.name = floorNo + tag;
@@ -724,6 +737,105 @@ const Core = (() => {
       res[key] = out;
     }
     return res;
+  }
+
+  // ---------------- plate packing ----------------
+  // plan footprint of a cut half in the piece's own frame (mm), as integer 1 mm cells, dilated by dil
+  function footprintMask(part, c, s, k, flip, dil) {
+    const V = part.V, F = part.F, n = V.length / 3;
+    const X = new Float64Array(n), Y = new Float64Array(n);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const x = (V[i * 3] - c[0]) * s * k, y = (V[i * 3 + 1] - c[1]) * s * k * (flip ? -1 : 1);
+      X[i] = x; Y[i] = y; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;   // same centring as printPieces
+    const d = Math.ceil(dil);
+    const oi = Math.floor(x0 - cx) - d - 1, oj = Math.floor(y0 - cy) - d - 1;
+    const W = Math.ceil(x1 - cx) - oi + d + 2, H = Math.ceil(y1 - cy) - oj + d + 2;
+    const g = new Uint8Array(W * H);
+    for (let t = 0; t < F.length; t += 3) {
+      const p = [F[t], F[t + 1], F[t + 2]].map(i => [X[i] - cx - oi, Y[i] - cy - oj]);
+      const a = (p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) - (p[2][0] - p[0][0]) * (p[1][1] - p[0][1]);
+      const i0 = Math.max(0, Math.floor(Math.min(p[0][0], p[1][0], p[2][0]))), i1 = Math.min(W - 1, Math.floor(Math.max(p[0][0], p[1][0], p[2][0])));
+      const j0 = Math.max(0, Math.floor(Math.min(p[0][1], p[1][1], p[2][1]))), j1 = Math.min(H - 1, Math.floor(Math.max(p[0][1], p[1][1], p[2][1])));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        if (g[j * W + i]) continue;
+        let hit = false;
+        for (const [u, v] of [[0.5, 0.5], [0, 0], [1, 0], [0, 1], [1, 1]]) {
+          const x = i + u, y = j + v;
+          const w0 = (p[1][0] - x) * (p[2][1] - y) - (p[2][0] - x) * (p[1][1] - y);
+          const w1 = (p[2][0] - x) * (p[0][1] - y) - (p[0][0] - x) * (p[2][1] - y);
+          const w2 = a - w0 - w1;
+          if (a > 0 ? (w0 >= 0 && w1 >= 0 && w2 >= 0) : (w0 <= 0 && w1 <= 0 && w2 <= 0)) { hit = true; break; }
+        }
+        if (hit) g[j * W + i] = 1;
+      }
+    }
+    const out = new Uint8Array(W * H);
+    const disk = [];
+    for (let v = -d; v <= d; v++) for (let u = -d; u <= d; u++) if (u * u + v * v <= dil * dil + 0.5) disk.push(u, v);
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) if (g[j * W + i])
+      for (let q = 0; q < disk.length; q += 2) { const a2 = i + disk[q], b2 = j + disk[q + 1]; if (a2 >= 0 && b2 >= 0 && a2 < W && b2 < H) out[b2 * W + a2] = 1; }
+    const cells = [];
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) if (out[j * W + i]) cells.push(i + oi, j + oj);
+    return normMask(cells);
+  }
+  function normMask(cells) {
+    let mi = Infinity, mj = Infinity, xi = -Infinity, xj = -Infinity;
+    for (let q = 0; q < cells.length; q += 2) { mi = Math.min(mi, cells[q]); xi = Math.max(xi, cells[q]); mj = Math.min(mj, cells[q + 1]); xj = Math.max(xj, cells[q + 1]); }
+    return { cells: Int32Array.from(cells), mi, mj, xi, xj, area: cells.length / 2 };
+  }
+  // rotate a mask about the piece origin (cells are absolute piece-frame coordinates)
+  function rotMask(m, deg) {
+    if (!deg) return m;
+    const a = deg * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
+    const set = new Set(), out = [];
+    for (let q = 0; q < m.cells.length; q += 2)
+      for (const [u, v] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) {
+        const x = m.cells[q] + u, y = m.cells[q + 1] + v;
+        const i = Math.floor(cs * x - sn * y), j = Math.floor(sn * x + cs * y), key = i * 65536 + j;
+        if (!set.has(key)) { set.add(key); out.push(i, j); }
+      }
+    return normMask(out);
+  }
+  // first-fit decreasing over all plates; items: [{name, masks:[{deg, m}]}]; returns [[{name, deg, dx, dy}]]
+  function packPlates(items, plate, margin, gap, step = 2) {
+    const P = plate, edge = Math.max(0, Math.round(margin - gap / 2));
+    const plates = [];
+    const newPlate = () => {
+      const occ = new Uint8Array(P * P);
+      for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) if (x < edge || y < edge || x >= P - edge || y >= P - edge) occ[y * P + x] = 1;
+      const p = { occ, list: [] }; plates.push(p); return p;
+    };
+    const tryPlace = (p, it) => {
+      for (let y = 0; y < P; y += step) for (let x = 0; x < P; x += step)
+        for (const { deg, m } of it.masks) {
+          const dx = x - m.mi, dy = y - m.mj;
+          if (m.xi + dx >= P || m.xj + dy >= P) continue;
+          const c = m.cells; let ok = true;
+          for (let q = 0; q < c.length; q += 2) if (p.occ[(c[q + 1] + dy) * P + c[q] + dx]) { ok = false; break; }
+          if (!ok) continue;
+          for (let q = 0; q < c.length; q += 2) p.occ[(c[q + 1] + dy) * P + c[q] + dx] = 1;
+          p.list.push({ name: it.name, deg, dx, dy });
+          return true;
+        }
+      return false;
+    };
+    const order = [...items].sort((a, b) => b.masks[0].m.area - a.masks[0].m.area);
+    for (const it of order) {
+      let placed = false;
+      for (const p of plates) if (tryPlace(p, it)) { placed = true; break; }
+      if (!placed && !tryPlace(newPlate(), it)) throw new Error(it.name + ' 放不进打印盘');
+    }
+    return plates.map(p => p.list.sort((a, b) => natCmp(a.name, b.name)));
+  }
+  function natCmp(a, b) { const [x1, y1] = a.split('-').map(Number), [x2, y2] = b.split('-').map(Number); return x1 - x2 || y1 - y2; }
+  // place a piece on a plate: rotate about its origin, then shift (mm)
+  function placeOnPlate(V, deg, dx, dy) {
+    const a = deg * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a), W = new Float64Array(V.length);
+    for (let i = 0; i < V.length; i += 3) { const x = V[i], y = V[i + 1]; W[i] = cs * x - sn * y + dx; W[i + 1] = sn * x + cs * y + dy; W[i + 2] = V[i + 2]; }
+    return W;
   }
 
   // ---------- zip (deflate when CompressionStream exists, else stored) ----------
@@ -797,7 +909,7 @@ const Core = (() => {
     return t.join('\n');
   }
 
-  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, floors, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, addLabel, glyphRects, zipEntry, zipBlobParts, crc32, assemblySVG };
+  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, floors, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, addLabel, glyphRects, zipEntry, zipBlobParts, crc32, assemblySVG, footprintMask, rotMask, packPlates, placeOnPlate };
 })();
 if (typeof module !== 'undefined') module.exports = Core;
 // ===================== CORE-END =====================
@@ -809,7 +921,8 @@ if (typeof module !== 'undefined') module.exports = Core;
 const $ = id => document.getElementById(id);
 const GH = { count: 40, gap: 3.6, minR: 0.62, curve: 'linear', step: 22.5, thick: 0.1, pivot: 'centroid' };
 const S = Object.assign({ unit: 1, upY: false }, GH);
-const PR = { den: 500, wall: 1.2, labels: true, preview: 0 };
+const PR = { den: 500, wall: 1.2, labels: true, preview: 0, margin: 10, gap: 6, plate: 0 };
+let packCache = null;
 let halves = null;
 let raw = null, fileName = '示例楼板', baseMesh = null, geo = null;
 
@@ -832,6 +945,7 @@ function rebuild() {
   geo = { V, F, bb, c, es, thick, h: bb.size[2] };
   halves = null;
   PR.preview = 0;
+  packCache = null;
   uploadMesh();
   updateInfo();
   update(true);
@@ -876,8 +990,10 @@ function update(refit) {
     '导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。';
   $('hudA').textContent = `${S.count} 层 · 总高 ${fmt(H, 1)} m · 扭转 ${fmt((S.count - 1) * S.step, 1)}°`;
   updatePrint(fl, p);
-  if (PR.preview) { PR.preview = 0; R.upload(geo); refit = true; }
+  if (PR.preview || PR.plate) { PR.preview = 0; PR.plate = 0; R.setPlate(null); R.upload(geo); refit = true; }
   $('btnPrev').textContent = '预览分件';
+  $('btnPlates').textContent = '排盘预览';
+  renderChips();
   R.setFloors(fl, geo, p);
   if (refit) R.fit();
   R.draw();
@@ -912,16 +1028,87 @@ function plan(fl) {
 }
 function updatePrint(fl) {
   const ok = !geo.es.closed && geo.thick;
-  $('btnPrev').disabled = $('btnPrint').disabled = !ok;
+  $('btnPrev').disabled = $('btnPrint').disabled = $('btnPlates').disabled = !ok;
   if (!ok) { $('readPrint').innerHTML = '<span class="warn">分件需要开放面单体（闭合实体暂不支持切半）</span>'; return; }
   const pl = plan(fl);
   const wReal = PR.wall * PR.den / 1000;
   $('readPrint').innerHTML =
     `每层切成上下两半（单体中线），上半翻面打印<br>` +
     `单片 ${fmt(pl.maxD, 0)}–${fmt(pl.minD, 0)} mm 见方 · 高约 ${fmt(pl.halfH, 1)} mm<br>` +
-    `${S.count * 2} 片 · 约 ${pl.plates.length} 盘 · 壁厚相当于真实 ${fmt(wReal, 2)} m` +
+    `${S.count * 2} 片 · ` + (packCache && packCache.key === packKey() ? `${packCache.plates.length} 盘（按轮廓排好）` : '盘数点"排盘预览"计算') + ` · 壁厚相当于真实 ${fmt(wReal, 2)} m` +
     (pl.fits ? '' : `<br><span class="warn">最大单片超过 ${PLATE - 2 * MARGIN} mm，放不进 A1，请换小一点的比例</span>`);
   $('nPrev').max = S.count;
+}
+function packKey() {
+  return JSON.stringify([fileName, S.unit, S.upY, S.count, S.minR, S.curve, S.thick, PR.den, PR.wall, PR.margin, PR.gap]);
+}
+async function ensurePacked(progress) {
+  const key = packKey();
+  if (packCache && packCache.key === key) return packCache;
+  const fl = Core.floors(params()), hv = getHalves(), k = printFactor(), dil = PR.wall / 2 + PR.gap / 2;
+  const items = [];
+  for (let i = 0; i < fl.length; i++) {
+    if (progress) progress(`轮廓 ${i + 1}/${fl.length}`);
+    await new Promise(r => setTimeout(r, 0));
+    for (const [part, flip, tag] of [[hv.hi, true, '-1'], [hv.lo, false, '-2']]) {
+      const m0 = Core.footprintMask(part, geo.c, fl[i].s, k, flip, dil);
+      items.push({ name: (i + 1) + tag, masks: [{ deg: 0, m: m0 }, { deg: 45, m: Core.rotMask(m0, 45) }] });
+    }
+  }
+  if (progress) progress('排盘…');
+  await new Promise(r => setTimeout(r, 0));
+  const plates = Core.packPlates(items, PLATE, PR.margin, PR.gap);
+  packCache = { key, plates };
+  updatePrint(fl);
+  return packCache;
+}
+// pieces of a floor, with a small cache (a floor's two halves may sit on different plates)
+const pieceCache = new Map();
+function pieceByName(name, fl) {
+  const [n, h] = name.split('-').map(Number);
+  const key = packKey() + '|' + n + '|' + PR.labels;
+  let P = pieceCache.get(key);
+  if (!P) {
+    P = piecesFor(n - 1, fl);
+    pieceCache.set(key, P);
+    while (pieceCache.size > 8) pieceCache.delete(pieceCache.keys().next().value);
+  }
+  return h === 1 ? P.upper : P.lower;
+}
+function plateMesh(list, fl) {
+  const parts = list.map(it => { const pc = pieceByName(it.name, fl); return { V: Core.placeOnPlate(pc.V, it.deg, it.dx, it.dy), F: pc.F, placed: pc.placed }; });
+  let nv = 0, nf = 0;
+  for (const p of parts) { nv += p.V.length; nf += p.F.length; }
+  const V = new Float64Array(nv), F = new Uint32Array(nf);
+  let ov = 0, of = 0;
+  for (const p of parts) { V.set(p.V, ov); for (let i = 0; i < p.F.length; i++) F[of + i] = p.F[i] + ov / 3; ov += p.V.length; of += p.F.length; }
+  return { V, F, missing: list.filter((it, i) => PR.labels && !parts[i].placed).map(it => it.name) };
+}
+function renderChips() {
+  const box = $('plateChips');
+  const ok = packCache && packCache.key === packKey() && (PR.plate || box.dataset.shown === '1');
+  box.classList.toggle('hidden', !ok);
+  if (!ok) { box.innerHTML = ''; return; }
+  box.innerHTML = packCache.plates.map((p, i) => `<button data-i="${i + 1}" class="${PR.plate === i + 1 ? 'on' : ''}" title="${p.map(x => x.name).join(' ')}">${i + 1}</button>`).join('');
+}
+async function showPlate(n) {
+  const pk = await ensurePacked(t => { $('btnPlates').textContent = t; });
+  const fl = Core.floors(params());
+  n = Math.max(1, Math.min(pk.plates.length, n));
+  $('btnPlates').textContent = '生成中…';
+  await new Promise(r => setTimeout(r, 20));
+  const list = pk.plates[n - 1];
+  const g = plateMesh(list, fl);
+  g.c = [PLATE / 2, PLATE / 2, 0];
+  g.bb = Core.bbox(g.V);
+  PR.preview = 0; PR.plate = n;
+  $('plateChips').dataset.shown = '1';
+  R.setPlate({ size: PLATE, margin: PR.margin });
+  R.upload(g); R.setFloors([{ i: 0, s: 1, th: 0, z: 0 }], g, { pitch: 0 }); R.fit(); R.draw();
+  $('hudA').textContent = `盘 ${n} / ${pk.plates.length} · ${list.map(x => x.name).join(' · ')}` + (g.missing.length ? ` · ${g.missing.join(' ')} 层号放不下` : '');
+  $('btnPlates').textContent = '返回塔楼';
+  $('btnPrev').textContent = '预览分件';
+  renderChips();
 }
 function piecesFor(i, fl) {
   return Core.printPieces(getHalves(), geo.c, fl[i].s, printFactor(), PR.wall, i + 1, PR.labels, 5);
@@ -939,7 +1126,8 @@ function showPreview(n) {
   F.set(a.F); const nA = a.V.length / 3;
   for (let j = 0; j < b.F.length; j++) F[a.F.length + j] = b.F[j] + nA;
   const g = { V, F, c: [0, 0, 0], bb: Core.bbox(V) };
-  PR.preview = i + 1;
+  PR.preview = i + 1; PR.plate = 0;
+  R.setPlate(null);
   R.upload(g); R.setFloors([{ i: 0, s: 1, th: 0, z: 0 }], g, { pitch: 0 }); R.fit(); R.draw();
   $('hudA').textContent = `第 ${i + 1} 层分件 · 左 ${i + 1}-1 上半（已翻面）· 右 ${i + 1}-2 下半 · 单位 mm` + (a.placed && b.placed ? '' : ' · 层号放不下');
   $('btnPrev').textContent = '返回塔楼';
@@ -1052,6 +1240,20 @@ async function loadUnit(quiet) {
 $('btnUnit').onclick = () => loadUnit(false);
 $('btnReset').onclick = () => { Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY); syncAll(); rebuild(); };
 $('btnFit').onclick = () => { R.fit(); R.draw(); };
+for (const [id, key] of [['nMargin', 'margin'], ['nGapP', 'gap']]) {
+  $(id).value = PR[key];
+  $(id).addEventListener('change', () => { const v = Math.max(0, Math.min(60, +$(id).value || 0)); PR[key] = v; $(id).value = v; $('plateChips').dataset.shown = ''; update(false); });
+}
+$('btnPlates').onclick = async () => {
+  if (PR.plate) { $('plateChips').dataset.shown = ''; update(true); return; }
+  const b = $('btnPlates'); b.disabled = true;
+  try { await showPlate(1); } catch (e) { console.error(e); toast('排盘失败：' + e.message); b.textContent = '排盘预览'; }
+  b.disabled = false;
+};
+$('plateChips').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  try { await showPlate(+b.dataset.i); } catch (err) { console.error(err); toast('排盘失败：' + err.message); }
+});
 $('btnPrev').onclick = () => {
   if (PR.preview) { update(true); return; }
   const b = $('btnPrev'); b.textContent = '生成中…'; b.disabled = true;
@@ -1061,24 +1263,33 @@ $('btnPrint').onclick = async () => {
   const btn = $('btnPrint'); btn.disabled = true;
   try {
     const fl = Core.floors(params());
-    const pl = plan(fl);
+    const pk = await ensurePacked(t => { btn.textContent = t; });
     const folder = `${baseName()}_1-${PR.den}_打印件/`;
-    const entries = [], missing = [];
-    for (let i = 0; i < fl.length; i++) {
-      btn.textContent = `${i + 1}/${fl.length}`;
+    const entries = [], missing = new Set(), done = new Set();
+    const plateOf = {};
+    pk.plates.forEach((p, i) => p.forEach(it => { plateOf[it.name] = i + 1; }));
+    const one = [{ i: 0, z: 0, s: 1, th: 0 }];
+    for (let i = 0; i < pk.plates.length; i++) {
+      const list = pk.plates[i];
+      btn.textContent = `盘 ${i + 1}/${pk.plates.length}`;
       await new Promise(r => setTimeout(r, 0));
-      const P = piecesFor(i, fl);
-      for (const pc of [P.upper, P.lower]) {
-        if (PR.labels && !pc.placed) missing.push(pc.name);
-        const stl = new Uint8Array(Core.exportSTL(pc.V, pc.F, [0, 0, 0], [{ i: 0, z: 0, s: 1, th: 0 }], 1));
-        entries.push(await Core.zipEntry(folder + pc.name + '.stl', stl));
+      const g = plateMesh(list, fl);
+      g.missing.forEach(n => missing.add(n));
+      const tag = String(i + 1).padStart(2, '0');
+      entries.push(await Core.zipEntry(`${folder}按盘/盘${tag}_${list.map(x => x.name).join('_')}.stl`, new Uint8Array(Core.exportSTL(g.V, g.F, [0, 0, 0], one, 1))));
+      for (const it of list) {
+        if (done.has(it.name)) continue;
+        const pc = pieceByName(it.name, fl);
+        entries.push(await Core.zipEntry(`${folder}单片/${it.name}.stl`, new Uint8Array(Core.exportSTL(pc.V, pc.F, [0, 0, 0], one, 1))));
+        done.add(it.name);
       }
     }
     btn.textContent = '打包…';
+    const plates = pk.plates.map(p => p.map(x => x.name));
     const info = {
       title: fileName.replace(/\.stl$/i, ''), scaleDen: PR.den, wall: PR.wall,
-      floors: fl.map(f => ({ no: f.i + 1, angle: f.th * 180 / Math.PI, s: f.s, plate: pl.plates.findIndex(p => p.includes(f.i + 1)) + 1 })),
-      plates: pl.plates.map(p => p.flatMap(n => [n + '-1', n + '-2'])),
+      floors: fl.map(f => { const a = plateOf[(f.i + 1) + '-1'], b = plateOf[(f.i + 1) + '-2']; return { no: f.i + 1, angle: f.th * 180 / Math.PI, s: f.s, plate: a === b ? a : a + '/' + b }; }),
+      plates,
     };
     const enc = new TextEncoder();
     entries.push(await Core.zipEntry(folder + '组装图.svg', enc.encode(Core.assemblySVG(info))));
@@ -1086,12 +1297,15 @@ $('btnPrint').onclick = async () => {
       `单体塔楼 · 打印分件`, `比例 1:${PR.den} · 打印壁厚 ${PR.wall} mm（相当于真实 ${PR.wall * PR.den / 1000} m）· 单位 mm`,
       `每层切成上下两半：N-1 = 上半（已翻面，平面朝下打印，组装时翻回），N-2 = 下半`,
       `层号凸字在臂内槽底，组装后被盖住`, `扭转：每层相对下一层 ${S.step}°（逆时针，俯视），见 组装图.svg`, '',
-      `打印盘分配（A1 256 × 256 mm）：`, ...info.plates.map((p, i) => `盘 ${i + 1}：${p.join('、')}`),
-      ...(missing.length ? ['', `以下零件放不下层号：${missing.join('、')}`] : []),
+      `按盘/：每盘一个 STL，零件已排好（盘边 ${PR.margin} mm，间距 ${PR.gap} mm，A1 256 × 256 mm）。`,
+      `在 Bambu Studio 里每个文件导入一个盘；需要单独调整时右键"拆分为对象"。`,
+      `单片/：每片单独的 STL，文件名即层号。`, '',
+      `打印盘分配：`, ...plates.map((p, i) => `盘 ${i + 1}：${p.join('、')}`),
+      ...(missing.size ? ['', `以下零件放不下层号：${[...missing].join('、')}`] : []),
     ].join('\r\n');
-    entries.push(await Core.zipEntry(folder + '说明.txt', enc.encode('\ufeff' + notes)));
+    entries.push(await Core.zipEntry(folder + '说明.txt', enc.encode('﻿' + notes)));
     save(new Blob(Core.zipBlobParts(entries), { type: 'application/zip' }), `${baseName()}_1-${PR.den}_打印件.zip`, 'application/zip');
-    toast(`已导出 ${fl.length * 2} 片` + (missing.length ? ` · ${missing.length} 片层号放不下` : ''));
+    toast(`已导出 ${pk.plates.length} 盘 · ${done.size} 片` + (missing.size ? ` · ${missing.size} 片层号放不下` : ''));
   } catch (e) { console.error(e); toast('导出失败：' + (e.message || e)); }
   btn.disabled = false; btn.textContent = '导出 ZIP';
 };
@@ -1139,7 +1353,7 @@ $('ex3DM').onclick = busy($('ex3DM'), async () => {
 const R = (() => {
   const cv = $('gl');
   const gl = cv.getContext('webgl2', { antialias: true });
-  if (!gl) { $('err').style.display = 'flex'; $('err').textContent = '浏览器不支持 WebGL2，无法预览（导出仍可用）'; return { setFloors() {}, fit() {}, draw() {} }; }
+  if (!gl) { $('err').style.display = 'flex'; $('err').textContent = '浏览器不支持 WebGL2，无法预览（导出仍可用）'; return { setFloors() {}, fit() {}, draw() {}, upload() {}, setPlate() {} }; }
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
   const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
   const meshP = prog(`#version 300 es
@@ -1173,9 +1387,10 @@ const R = (() => {
     precision highp float; uniform vec4 uC; out vec4 o; void main(){ o=uC; }`);
   const vao = gl.createVertexArray(), vbo = gl.createBuffer(), ibo = gl.createBuffer();
   const lvao = gl.createVertexArray(), lvbo = gl.createBuffer();
-  let nVerts = 0, nInst = 0, gridN = 0, axisStart = 0;
+  let nVerts = 0, nInst = 0, gridN = 0, axisStart = 0, plateLines = 0;
   let cam = { az: -0.75, el: 0.42, dist: 100, tgt: [0, 0, 0] };
   let ext = { r: 10, h: 10, z0: 0 };
+  let plateMode = null;
 
   function upload(g) {
     const { V, F, c } = g;
@@ -1222,6 +1437,21 @@ const R = (() => {
 
   function buildLines() {
     const L = [];
+    if (plateMode) {
+      const h = plateMode.size / 2, m = h - plateMode.margin, z = ext.z0;
+      const sq = r => L.push(-r, -r, z, r, -r, z, r, -r, z, r, r, z, r, r, z, -r, r, z, -r, r, z, -r, -r, z);
+      for (let x = -h + 32; x < h; x += 32) L.push(x, -h, z, x, h, z, -h, x, z, h, x, z);
+      gridN = L.length / 3;
+      sq(h); sq(m);
+      axisStart = gridN; plateLines = (L.length / 3) - gridN;
+      gl.bindVertexArray(lvao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, lvbo);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(L), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+      gl.bindVertexArray(null);
+      return;
+    }
+    plateLines = 0;
     const step = niceStep(ext.r * 2.4 / 12);
     const half = Math.ceil(ext.r * 1.6 / step) * step;
     const z = ext.z0;
@@ -1242,7 +1472,8 @@ const R = (() => {
     const size = Math.max(ext.h, ext.r * 2.2);
     const asp = cv.clientWidth / Math.max(1, cv.clientHeight);
     cam.dist = size / (2 * Math.tan(17.5 * Math.PI / 180)) / Math.min(1, asp) * 1.42;
-    cam.az = -0.75; cam.el = 0.3;
+    cam.az = -0.75; cam.el = plateMode ? 0.95 : 0.3;
+    if (plateMode) cam.dist *= 0.8;
   }
 
   function mats() {
@@ -1289,7 +1520,11 @@ const R = (() => {
     gl.disable(gl.DEPTH_TEST);
     gl.uniform4f(gl.getUniformLocation(lineP, 'uC'), 1.0, 0.416, 0.239, 0.55);
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.drawArrays(gl.LINES, axisStart, 2);
+    if (plateMode) {
+      gl.drawArrays(gl.LINES, axisStart, 8);
+      gl.uniform4f(gl.getUniformLocation(lineP, 'uC'), 0.39, 0.82, 1.0, 0.55);
+      gl.drawArrays(gl.LINES, axisStart + 8, 8);
+    } else gl.drawArrays(gl.LINES, axisStart, 2);
     gl.disable(gl.BLEND);
     gl.bindVertexArray(null);
   }
@@ -1320,7 +1555,8 @@ const R = (() => {
     for (let i = 0; i < 3; i++) cam.tgt[i] += (-dx * m.xA[i] + dy * m.yA[i]) * k;
   }
   new ResizeObserver(draw).observe(cv);
-  return { upload, setFloors, fit, draw };
+  function setPlate(p) { plateMode = p; }
+  return { upload, setFloors, fit, draw, setPlate };
 })();
 function uploadMesh() { R.upload(geo); }
 
