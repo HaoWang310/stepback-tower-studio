@@ -60,6 +60,24 @@ td a{color:#fff;text-decoration:none;border-bottom:1px solid #3A414B}
 .chips button{height:30px;padding:0 11px;border:1px solid #2A2F36;border-radius:999px;background:transparent;color:#C9D1DC;font:inherit;font-size:12px;cursor:pointer}
 .chips button.on{background:var(--acc);border-color:var(--acc);color:#0b0d10}
 .row{padding:4px 0}
+.place{margin:8px 0 6px;padding:12px 0 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.place .ph{font-size:13px;font-weight:600;color:#fff;margin-bottom:8px}
+.place .pl{display:flex;align-items:baseline;gap:8px;font-size:13px;color:#C9D1DC;margin:8px 0 6px}
+.place .pl small{font-size:11px;color:#7C8592}
+.pseg{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:3px;border-radius:12px;background:#1B1F25}
+.pseg button{height:30px;border:0;border-radius:9px;background:transparent;color:#C9D1DC;font:inherit;font-size:12px;cursor:pointer}
+.pseg button.on{background:#E8EAED;color:#0b0d10}
+.pseg button:disabled{color:#4A515C;cursor:not-allowed}
+.pbtns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.pbtns button{min-height:44px;padding:6px 4px;border:0;border-radius:12px;background:#22262D;color:#E8EAED;font:inherit;font-size:12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.pbtns button:disabled{color:#4A515C;cursor:not-allowed}
+.pbtns small{font-size:10px;min-height:12px}
+.pbtns small.same{color:#EBBE46}.pbtns small.diff{color:#00C8D2}
+.ptog{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#C9D1DC;margin-top:10px}
+.sw{width:44px;height:26px;border:0;border-radius:13px;background:#3A3F47;position:relative;cursor:pointer}
+.sw::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s}
+.sw.on{background:#00C8D2}.sw.on::after{left:21px}
+@media (prefers-reduced-motion: reduce){.sw::after{transition:none}}
 .row label{display:flex;justify-content:space-between;font-size:13px;color:#C9D1DC}
 .row output{color:#fff;font-variant-numeric:tabular-nums}
 .row.hide{display:none}
@@ -697,6 +715,52 @@ function towerBuild(S, P){
   return out;
 }
 
+/* ---------- 摆放：落地面 / 上下翻转 / 镜像 / 绕竖轴 90° ---------- */
+// 落地面顺序：底 顶 前 后 左 右（three 坐标：−Y +Y +Z −Z −X +X 朝下）
+const FACE_R = [I3, [1,0,0, 0,-1,0, 0,0,-1], [1,0,0, 0,0,-1, 0,1,0], [1,0,0, 0,0,1, 0,-1,0], [0,-1,0, 1,0,0, 0,0,1], [0,1,0, -1,0,0, 0,0,1]];
+const FACE_NAME = ['底','顶','前','后','左','右'];
+const HINT = {s001:['形状不变','形状不变'], s002:['形状不变','左旋 ↔ 右旋'], s003:['形状不变','形状不变'], s004:['形状不变','形状不变'], s005:['= 转 90°','形状不变'], s006:['会得到新形体','形状不变']};
+const placed = () => P.pf >= 0 || !!P.pmr || !!P.prt;
+const povView = () => S.pov && !(P.fl > 0) && !placed();
+function placeM(){
+  let M = FACE_R[Math.max(0, P.pf)];
+  if (P.pmr) M = mul([-1,0,0, 0,1,0, 0,0,1], M);
+  const a = (P.prt || 0)*Math.PI/2; M = mul([Math.cos(a),0,Math.sin(a), 0,1,0, -Math.sin(a),0,Math.cos(a)], M);
+  return M;
+}
+function applyPlacement(){
+  const M = placeM(), det = M[0]*(M[4]*M[8]-M[5]*M[7]) - M[1]*(M[3]*M[8]-M[5]*M[6]) + M[2]*(M[3]*M[7]-M[4]*M[6]);
+  const R = cur.raw, n = R.length/3, pos = new Float32Array(R.length), lo = [Infinity,Infinity,Infinity], hi = [-Infinity,-Infinity,-Infinity];
+  for (let v=0; v<n; v++){ const p = mv(M, [R[v*3], R[v*3+1], R[v*3+2]]); for (let k=0; k<3; k++){ pos[v*3+k] = p[k]; if (p[k]<lo[k]) lo[k]=p[k]; if (p[k]>hi[k]) hi[k]=p[k]; } }
+  const c = [0,1,2].map(k => (lo[k]+hi[k])/2); let L = 0;
+  for (let v=0; v<n; v++) for (let k=0; k<3; k++){ pos[v*3+k] -= c[k]; L = Math.max(L, Math.abs(pos[v*3+k])); }
+  let idx = cur.rawIdx; if (det < 0){ idx = Uint32Array.from(idx); for (let i=0; i<idx.length; i+=3){ const t = idx[i+1]; idx[i+1] = idx[i+2]; idx[i+2] = t; } }
+  Object.assign(cur, {pos, idx, M, pc: c, det, L, _base: null});
+}
+// 外框 6 个面上贴着的边界线长度 ≥ 外框周长的 30% 才算平整，可以落地
+function faceFlags(){
+  const rb = cur._rawBase || (cur._rawBase = baseFrom(cur.raw, cur.rawIdx)), Pp = rb.Pp, B = rb.B;
+  const lo = [Infinity,Infinity,Infinity], hi = [-Infinity,-Infinity,-Infinity];
+  for (let i=0; i<Pp.length; i++){ const k = i%3; if (Pp[i]<lo[k]) lo[k]=Pp[i]; if (Pp[i]>hi[k]) hi[k]=Pp[i]; }
+  const ext = [0,1,2].map(k => hi[k]-lo[k]), tol = 2e-3*Math.max(...ext);
+  const spec = [[1,lo[1]],[1,hi[1]],[2,hi[2]],[2,lo[2]],[0,lo[0]],[0,hi[0]]];
+  cur.faces = spec.map(([ax, v]) => {
+    let len = 0; for (let i=0; i<B.length; i+=2){ const a = B[i], b = B[i+1];
+      if (Math.abs(Pp[a*3+ax]-v) < tol && Math.abs(Pp[b*3+ax]-v) < tol) len += Math.hypot(Pp[a*3]-Pp[b*3], Pp[a*3+1]-Pp[b*3+1], Pp[a*3+2]-Pp[b*3+2]); }
+    const o = [0,1,2].filter(k => k !== ax); return len / (2*(ext[o[0]]+ext[o[1]])) >= 0.3;
+  });
+}
+// 接触边：贴地的边界线（three 坐标，模型组内）
+function contactLines(groundAtMax){
+  const b = offsetBase(), Pp = b.Pp, B = b.B; let lo = Infinity, hi = -Infinity, ext = 0;
+  for (let i=1; i<Pp.length; i+=3){ if (Pp[i]<lo) lo=Pp[i]; if (Pp[i]>hi) hi=Pp[i]; }
+  for (let i=0; i<Pp.length; i++) ext = Math.max(ext, Math.abs(Pp[i]));
+  const y0 = groundAtMax ? hi : lo, tol = 1e-3*ext, out = [];
+  for (let i=0; i<B.length; i+=2){ const a = B[i], c = B[i+1];
+    if (Math.abs(Pp[a*3+1]-y0) < tol && Math.abs(Pp[c*3+1]-y0) < tol) out.push(Pp[a*3],Pp[a*3+1],Pp[a*3+2], Pp[c*3],Pp[c*3+1],Pp[c*3+2]); }
+  return new Float32Array(out);
+}
+
 /* ---------- 曲面库 ---------- */
 const TAGS = ['屋面','立面','结构','景观','可打印'];
 const CATS = [
@@ -839,8 +903,32 @@ function setupPanel(){
   $('#chips').innerHTML = S.presets.map((p, i) => `<button type="button" data-i="${i}">${esc(p.name)}</button>`).join('')
     + (S.pov ? `<button type="button" id="b-mir" aria-pressed="true" title="原作用 POV-Ray 渲染，左手坐标系让画面成了镜像；关掉看真实的螺旋方向">镜像 · 同原图</button>` : '');
   $('#rows').innerHTML = specAll().map(([k,lab,mn,mx,st]) =>
+    (k === 't' ? placeHTML() : '') +
     `<div class="row${k==='op' && $('#ref').style.display!=='block' ? ' hide':''}" id="row-${k}"><label for="s-${k}"><span>${esc(lab)}</span><output id="o-${k}"></output></label>
      <input type="range" id="s-${k}" data-k="${k}" min="${mn}" max="${mx}" step="${st}"></div>`).join('');
+}
+
+function placeHTML(){
+  return `<div class="place" id="place"><div class="ph">摆放</div>
+    <div class="pl"><span>落地面</span><small>自动识别平整的截断面</small></div>
+    <div class="pseg" role="group" aria-label="落地面"><button type="button" data-f="-1">原样</button>${FACE_NAME.map((t, i) => `<button type="button" data-f="${i}">${t}</button>`).join('')}</div>
+    <div class="pl"><span>翻转</span></div>
+    <div class="pbtns"><button type="button" data-a="flip">上下翻转<small id="h-flip"></small></button><button type="button" data-a="mir">镜像<small id="h-mir"></small></button><button type="button" data-a="rot">绕竖轴 90°<small></small></button></div>
+    <div class="ptog"><span>显示对齐平面</span><button type="button" class="sw" data-t="pg" aria-label="显示对齐平面"></button></div>
+    <div class="ptog"><span>高亮接触边</span><button type="button" class="sw" data-t="pc" aria-label="高亮接触边"></button></div></div>`;
+}
+function updatePlaceUI(){
+  const box = $('#place'); if (!box || !cur) return;
+  const tower = P.fl > 0, f = cur.faces || [true,true,true,true,true,true];
+  for (const b of box.querySelectorAll('[data-f]')){
+    const i = +b.dataset.f, ok = i < 0 || (f[i] && (!tower || i < 2));
+    b.disabled = !ok; b.classList.toggle('on', P.pf === i); b.title = ok ? '' : (tower ? '塔楼模式下只能上下翻转' : '这一面不平整，不能落地');
+  }
+  const h = HINT[S.id] || ['',''];
+  $('#h-flip').textContent = h[0]; $('#h-flip').className = /不变|= 转/.test(h[0]) ? 'same' : 'diff';
+  $('#h-mir').textContent = h[1]; $('#h-mir').className = /不变|= 转/.test(h[1]) ? 'same' : 'diff';
+  box.querySelector('[data-a="rot"]').disabled = tower;
+  for (const b of box.querySelectorAll('[data-t]')) b.classList.toggle('on', !!P[b.dataset.t]);
 }
 function syncUI(){
   for (const [k,,mn,mx0,,fmt] of specAll()){
@@ -850,6 +938,7 @@ function syncUI(){
     s.style.setProperty('--p', ((P[k]-mn)/(mx-mn)*100)+'%');
     $('#o-'+k).textContent = fmt(+P[k]);
   }
+  updatePlaceUI();
   const mb = $('#b-mir'); if (mb){ mb.classList.toggle('on', !!P.mir); mb.setAttribute('aria-pressed', String(!!P.mir)); }
   for (const b of document.querySelectorAll('#chips button[data-i]')){
     const p = S.presets[+b.dataset.i];
@@ -875,6 +964,9 @@ const front = new THREE.MeshLambertMaterial({side:THREE.FrontSide, polygonOffset
 const back  = new THREE.MeshLambertMaterial({side:THREE.BackSide,  polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1});
 const lineMat = new THREE.LineBasicMaterial({color:0x1b1e1a, transparent:true, opacity:0.55});
 const rimMat = new THREE.MeshLambertMaterial({side:THREE.DoubleSide});
+const contactMat = new THREE.LineBasicMaterial({color:0x00C8D2});
+const groundMat = new THREE.MeshBasicMaterial({color:0x1A1D22, transparent:true, opacity:0.55, side:THREE.DoubleSide, depthWrite:false});
+let ground = null;
 let group = null, cur = null, wire = true, radius = 1;
 function applyPalette(){
   const pl = PALETTES[P.pal || S.pal || 'se'];
@@ -907,7 +999,7 @@ function povDecomp(){
 function setGroupMatrix(){
   if (!group) return;
   group.matrixAutoUpdate = false;
-  if (S.pov && !(P.fl > 0)){
+  if (povView()){
     const m = povDecomp().O;
     group.matrix.set(m[0],m[1],m[2],0, m[3],m[4],m[5],0, m[6],m[7],m[8],0, 0,0,0,1);
   } else group.matrix.identity();
@@ -917,8 +1009,8 @@ function setGroupMatrix(){
 function rebuild(){
   const res = P.fl > 0 ? towerBuild(S, P) : S.build(P);
   if (!res){ toast('这组参数下周期条件无解，换一个扭转值试试'); return; }
-  cur = res;
-  let L = 0; for (let i=0; i<cur.pos.length; i++){ const v = Math.abs(cur.pos[i]); if (v > L) L = v; } cur.L = L;
+  cur = res; cur.raw = res.pos.slice(); cur.rawIdx = res.idx; cur._rawBase = null;
+  applyPlacement(); faceFlags(); updatePlaceUI();
   show();
 }
 // 显示：厚度为 0 时画中面；厚度 > 0 时画加厚后的实体（上下两层 + 侧边），与导出的 STL 一致
@@ -941,7 +1033,16 @@ function show(){
   group.add(new THREE.Mesh(g, front), new THREE.Mesh(g, back));
   if (rimG) group.add(new THREE.Mesh(rimG, rimMat));
   const lines = new THREE.LineSegments(lg, lineMat); lines.visible = wire; group.add(lines);
+  const groundAtMax = povView() && povDecomp().O[4] < 0;
+  if (P.pc){ const cl = contactLines(groundAtMax); if (cl.length){ const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.BufferAttribute(cl, 3)); group.add(new THREE.LineSegments(cg, contactMat)); } }
   scene.add(group); setGroupMatrix();
+  if (ground){ scene.remove(ground); ground.traverse(o => { if (o.geometry) o.geometry.dispose(); }); ground = null; }
+  if (P.pg){
+    group.updateMatrixWorld(true); const bx = new THREE.Box3().setFromObject(group), sz = new THREE.Vector3(); bx.getSize(sz);
+    const size = Math.max(sz.x, sz.z)*1.6, gr = new THREE.GridHelper(size, 16, 0x4A4F58, 0x2A2E35);
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(size, size), groundMat); pl.rotation.x = -Math.PI/2;
+    ground = new THREE.Group(); ground.add(pl, gr); ground.position.set((bx.min.x+bx.max.x)/2, bx.min.y - 1e-4*size, (bx.min.z+bx.max.z)/2); scene.add(ground);
+  }
   g.computeBoundingBox(); g.computeBoundingSphere();
   const s = new THREE.Vector3(); g.boundingBox.getSize(s);
   const newR = g.boundingSphere.radius;
@@ -952,7 +1053,7 @@ function show(){
   $('#stat').textContent = `${(cur.idx.length/3).toLocaleString()} 个三角面 · ${Math.round(s.x*MM)} × ${Math.round(s.z*MM)} × ${Math.round(s.y*MM)} mm${P.t > 0 ? ' · 厚 '+P.t.toFixed(1)+' mm' : ''}${cur.R ? ' · R = '+cur.R.toFixed(4) : ''}${cur.note && P.fl > 0 ? ' · '+cur.note : ''}`;
 }
 function refView(){
-  if (S.pov && !(P.fl > 0)){
+  if (povView()){
     const scal = P.scal || 1.1, d = 4*cur.L/scal, ty = (P.povT ?? S.povT ?? 0) * cur.L / scal, {QT} = povDecomp();
     const tgt = mv(QT, [0, -ty, 0]), eye = mv(QT, [0, 0, d]);
     controls.target.set(tgt[0], tgt[1], tgt[2]); camera.up.set(0, 1, 0);
@@ -970,6 +1071,7 @@ function openSurface(x){
   if (S !== x){
     S = x; P = {...x.preset, mir: !!x.pov}; for (const [k,,,,,,d] of SHARED) if (P[k] === undefined) P[k] = d;
     for (const [k,,mn] of x.spec) if (P[k] === undefined) P[k] = mn;
+    Object.assign(P, {pf: -1, pmr: 0, prt: 0, pg: 1, pc: 1});
     applyPalette();
     setupPanel(); syncUI(); radius = 0; rebuild();
   }
@@ -982,6 +1084,17 @@ let scheduleView = false, wasTower = false;
 function schedule(){ if (!pending){ pending = true; requestAnimationFrame(() => { pending = false; rebuild(); const t = P.fl > 0; if (scheduleView && t !== wasTower){ setGroupMatrix(); refView(); } wasTower = t; scheduleView = false; }); } }
 let pendingShow = false;
 function scheduleShow(){ if (!pendingShow){ pendingShow = true; requestAnimationFrame(() => { pendingShow = false; if (cur) show(); }); } }
+
+$('#rows').addEventListener('click', e => {
+  const b = e.target.closest('#place button'); if (!b || b.disabled || !cur) return;
+  const opp = [1,0,3,2,5,4];
+  if (b.dataset.t){ P[b.dataset.t] = P[b.dataset.t] ? 0 : 1; updatePlaceUI(); show(); return; }
+  if (b.dataset.f !== undefined) P.pf = +b.dataset.f;
+  else if (b.dataset.a === 'flip') P.pf = opp[Math.max(0, P.pf)];
+  else if (b.dataset.a === 'mir') P.pmr = P.pmr ? 0 : 1;
+  else if (b.dataset.a === 'rot') P.prt = ((P.prt || 0) + 1) % 4;
+  applyPlacement(); updatePlaceUI(); show(); setGroupMatrix(); refView();
+});
 $('#rows').addEventListener('input', e => {
   const k = e.target.dataset.k; if (!k) return;
   P[k] = +e.target.value; if (S.clamp) S.clamp(P); syncUI();
@@ -1023,9 +1136,8 @@ $('#file').addEventListener('change', e => {
 
 // ---------- STL（带厚度的闭合壳体）+ ZIP ----------
 // 合并重合顶点、求顶点法向（导出和加厚预览共用）
-function offsetBase(){
-  if (cur._base) return cur._base;
-  const src = cur.pos, idx = cur.idx, nV = src.length/3;
+function baseFrom(src, idx){
+  const nV = src.length/3;
   // 数值哈希合并重合顶点（比字符串键快数倍）
   const map = new Map(), remap = new Uint32Array(nV), K = new Int32Array(nV*3), Pp = [], q = 1e5;
   for (let v=0; v<nV; v++){
@@ -1052,7 +1164,19 @@ function offsetBase(){
     const r = E.get(key); if (r) r.c++; else E.set(key, {a, b, c:1});
   }
   const B = []; for (const {a, b, c} of E.values()) if (c === 1) B.push(a, b);
-  return (cur._base = {Pp, T, N, n, remap, B});
+  return {Pp, T, N, n, remap, B};
+}
+// 摆放后的几何基底：在原始基底上做同样的旋转 / 镜像 / 平移（避免重复合并顶点）
+function offsetBase(){
+  if (cur._base) return cur._base;
+  const rb = cur._rawBase || (cur._rawBase = baseFrom(cur.raw, cur.rawIdx)), M = cur.M, c = cur.pc, n = rb.n;
+  const Pp = new Array(n*3), N = new Float64Array(n*3);
+  for (let v=0; v<n; v++){
+    const p = mv(M, [rb.Pp[v*3], rb.Pp[v*3+1], rb.Pp[v*3+2]]), q = mv(M, [rb.N[v*3], rb.N[v*3+1], rb.N[v*3+2]]);
+    for (let k=0; k<3; k++){ Pp[v*3+k] = p[k] - c[k]; N[v*3+k] = q[k]; }
+  }
+  let T = rb.T; if (cur.det < 0){ T = T.slice(); for (let i=0; i<T.length; i+=3){ const t = T[i+1]; T[i+1] = T[i+2]; T[i+2] = t; } }
+  return (cur._base = {Pp, T, N, n, remap: rb.remap, B: rb.B});
 }
 function offsetPos(half){
   const {Pp, N, n} = offsetBase(), O = new Float32Array(n*6);
@@ -1084,7 +1208,8 @@ function stl(){
   const head = (S.name + ' (M. Weber), mm, Z up').replace(/[^\x20-\x7e]/g, '-').slice(0, 80);
   for (let i=0; i<head.length; i++) dv.setUint8(i, head.charCodeAt(i));
   dv.setUint32(80, nT, true);
-  const p = v => [Q[v*3]*MM, -Q[v*3+2]*MM, Q[v*3+1]*MM];
+  let ymin = Infinity; for (let i=1; i<Q.length; i+=3) if (Q[i] < ymin) ymin = Q[i];
+  const p = v => [Q[v*3]*MM, -Q[v*3+2]*MM, (Q[v*3+1]-ymin)*MM];
   let o = 84;
   for (let k=0; k<nT; k++){
     const a = p(T[k*3]), b = p(T[k*3+1]), c = p(T[k*3+2]);
