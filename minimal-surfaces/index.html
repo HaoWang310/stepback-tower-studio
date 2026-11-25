@@ -719,10 +719,12 @@ const key = new THREE.DirectionalLight(0xffffff, 0.75); scene.add(key); scene.ad
 const front = new THREE.MeshLambertMaterial({side:THREE.FrontSide, polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1});
 const back  = new THREE.MeshLambertMaterial({side:THREE.BackSide,  polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1});
 const lineMat = new THREE.LineBasicMaterial({color:0x1b1e1a, transparent:true, opacity:0.55});
+const rimMat = new THREE.MeshLambertMaterial({side:THREE.DoubleSide});
 let group = null, cur = null, wire = true, radius = 1;
 function applyPalette(){
   const pl = PALETTES[P.pal || S.pal || 'se'];
   front.color.setHex(pl.front); back.color.setHex(pl.back); lineMat.color.setHex(pl.line); lineMat.opacity = pl.op;
+  rimMat.color.setHex(pl.front).lerp(new THREE.Color(pl.back), 0.5).multiplyScalar(0.8);
 }
 // 原作相机：POV 中物体先 rotate <0,0,20> 再 rotate <60,0,0>，相机在 (0,0,−4)、视角 40°。
 // 换算到右手坐标系后等价于：物体乘 X = F·M·Aᵀ（含镜像），相机固定在正前方。
@@ -758,22 +760,32 @@ function setGroupMatrix(){
 }
 
 function rebuild(){
-  const t0 = performance.now();
   const res = S.build(P);
   if (!res){ toast('这组参数下周期条件无解，换一个扭转值试试'); return; }
   cur = res;
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(cur.pos, 3));
-  g.setIndex(new THREE.BufferAttribute(cur.idx, 1));
+  let L = 0; for (let i=0; i<cur.pos.length; i++){ const v = Math.abs(cur.pos[i]); if (v > L) L = v; } cur.L = L;
+  show();
+}
+// 显示：厚度为 0 时画中面；厚度 > 0 时画加厚后的实体（上下两层 + 侧边），与导出的 STL 一致
+function show(){
+  const g = new THREE.BufferGeometry(), lg = new THREE.BufferGeometry();
+  let rimG = null;
+  if (P.t > 0){
+    const d = thickDisp();
+    g.setAttribute('position', new THREE.BufferAttribute(d.pos, 3)); g.setIndex(new THREE.BufferAttribute(d.idx, 1));
+    lg.setAttribute('position', g.attributes.position); lg.setIndex(new THREE.BufferAttribute(d.lin, 1));
+    rimG = new THREE.BufferGeometry(); rimG.setAttribute('position', g.attributes.position); rimG.setIndex(new THREE.BufferAttribute(d.rim, 1));
+    rimG.computeVertexNormals();
+  } else {
+    g.setAttribute('position', new THREE.BufferAttribute(cur.pos, 3)); g.setIndex(new THREE.BufferAttribute(cur.idx, 1));
+    lg.setAttribute('position', g.attributes.position); lg.setIndex(new THREE.BufferAttribute(cur.lin, 1));
+  }
   g.computeVertexNormals();
-  const lg = new THREE.BufferGeometry();
-  lg.setAttribute('position', g.attributes.position);
-  lg.setIndex(new THREE.BufferAttribute(cur.lin, 1));
   if (group){ scene.remove(group); group.children.forEach(o => o.geometry.dispose()); }
   group = new THREE.Group();
   group.add(new THREE.Mesh(g, front), new THREE.Mesh(g, back));
+  if (rimG) group.add(new THREE.Mesh(rimG, rimMat));
   const lines = new THREE.LineSegments(lg, lineMat); lines.visible = wire; group.add(lines);
-  let L = 0; for (let i=0; i<cur.pos.length; i++){ const v = Math.abs(cur.pos[i]); if (v > L) L = v; } cur.L = L;
   scene.add(group); setGroupMatrix();
   g.computeBoundingBox(); g.computeBoundingSphere();
   const s = new THREE.Vector3(); g.boundingBox.getSize(s);
@@ -782,7 +794,7 @@ function rebuild(){
   if (dir.lengthSq() > 0 && radius > 0) camera.position.copy(controls.target).add(dir.multiplyScalar(newR/radius));
   radius = newR;
   camera.near = radius/100; camera.far = radius*40; camera.updateProjectionMatrix();
-  $('#stat').textContent = `${(cur.idx.length/3).toLocaleString()} 个三角面 · ${Math.round(s.x*MM)} × ${Math.round(s.z*MM)} × ${Math.round(s.y*MM)} mm${cur.R ? ' · R = '+cur.R.toFixed(4) : ''}`;
+  $('#stat').textContent = `${(cur.idx.length/3).toLocaleString()} 个三角面 · ${Math.round(s.x*MM)} × ${Math.round(s.z*MM)} × ${Math.round(s.y*MM)} mm${P.t > 0 ? ' · 厚 '+P.t.toFixed(1)+' mm' : ''}${cur.R ? ' · R = '+cur.R.toFixed(4) : ''}`;
 }
 function refView(){
   if (S.pov){
@@ -811,11 +823,13 @@ function openSurface(x){
 
 let pending = false;
 function schedule(){ if (!pending){ pending = true; requestAnimationFrame(() => { pending = false; rebuild(); }); } }
+let pendingShow = false;
+function scheduleShow(){ if (!pendingShow){ pendingShow = true; requestAnimationFrame(() => { pendingShow = false; if (cur) show(); }); } }
 $('#rows').addEventListener('input', e => {
   const k = e.target.dataset.k; if (!k) return;
   P[k] = +e.target.value; if (S.clamp) S.clamp(P); syncUI();
   if (k === 'op'){ $('#ref').style.opacity = P.op/100; return; }
-  if (k === 't') return;
+  if (k === 't'){ scheduleShow(); return; }
   schedule();
 });
 $('#chips').addEventListener('click', e => {
@@ -849,13 +863,18 @@ $('#file').addEventListener('change', e => {
 });
 
 // ---------- STL（带厚度的闭合壳体）+ ZIP ----------
-function shell(){
+// 合并重合顶点、求顶点法向（导出和加厚预览共用）
+function offsetBase(){
+  if (cur._base) return cur._base;
   const src = cur.pos, idx = cur.idx, nV = src.length/3;
-  const map = new Map(), remap = new Uint32Array(nV), Pp = [], q = 1e5;
+  // 数值哈希合并重合顶点（比字符串键快数倍）
+  const map = new Map(), remap = new Uint32Array(nV), K = new Int32Array(nV*3), Pp = [], q = 1e5;
   for (let v=0; v<nV; v++){
-    const key = Math.round(src[v*3]*q)+','+Math.round(src[v*3+1]*q)+','+Math.round(src[v*3+2]*q);
-    let id = map.get(key);
-    if (id === undefined){ id = Pp.length/3; map.set(key, id); Pp.push(src[v*3], src[v*3+1], src[v*3+2]); }
+    const a = Math.round(src[v*3]*q), b = Math.round(src[v*3+1]*q), c = Math.round(src[v*3+2]*q);
+    const h = ((a*73856093) ^ (b*19349663) ^ (c*83492791)) | 0;
+    let lst = map.get(h), id = -1;
+    if (lst) for (const u of lst){ if (K[u*3]===a && K[u*3+1]===b && K[u*3+2]===c){ id = u; break; } }
+    if (id < 0){ id = Pp.length/3; K[id*3]=a; K[id*3+1]=b; K[id*3+2]=c; Pp.push(src[v*3], src[v*3+1], src[v*3+2]); if (lst) lst.push(id); else map.set(h, [id]); }
     remap[v] = id;
   }
   const T = [];
@@ -867,22 +886,37 @@ function shell(){
     const nx = uy*vz-uz*vy, ny = uz*vx-ux*vz, nz = ux*vy-uy*vx;
     for (const p of [a,b,c]){ N[p]+=nx; N[p+1]+=ny; N[p+2]+=nz; }
   }
-  const half = P.t/MM/2;
-  if (half <= 0) return {P:Pp, T};
-  const O = new Float64Array(n*6);
-  for (let v=0; v<n; v++){
-    const l = Math.hypot(N[v*3], N[v*3+1], N[v*3+2]) || 1;
-    for (let c=0; c<3; c++){ const d = N[v*3+c]/l*half; O[v*3+c] = Pp[v*3+c]+d; O[n*3+v*3+c] = Pp[v*3+c]-d; }
-  }
-  const Sx = [];
-  for (let i=0; i<T.length; i+=3){ Sx.push(T[i], T[i+1], T[i+2]); Sx.push(T[i]+n, T[i+2]+n, T[i+1]+n); }
+  for (let v=0; v<n; v++){ const l = Math.hypot(N[v*3], N[v*3+1], N[v*3+2]) || 1; N[v*3]/=l; N[v*3+1]/=l; N[v*3+2]/=l; }
   const E = new Map();
   for (let i=0; i<T.length; i+=3) for (let e=0; e<3; e++){
-    const a = T[i+e], b = T[i+(e+1)%3], key = a<b ? a+'_'+b : b+'_'+a;
+    const a = T[i+e], b = T[i+(e+1)%3], key = a<b ? a*n+b : b*n+a;
     const r = E.get(key); if (r) r.c++; else E.set(key, {a, b, c:1});
   }
-  for (const {a, b, c} of E.values()) if (c === 1) Sx.push(a, b, b+n, a, b+n, a+n);
+  const B = []; for (const {a, b, c} of E.values()) if (c === 1) B.push(a, b);
+  return (cur._base = {Pp, T, N, n, remap, B});
+}
+function offsetPos(half){
+  const {Pp, N, n} = offsetBase(), O = new Float32Array(n*6);
+  for (let v=0; v<n; v++) for (let c=0; c<3; c++){ const d = N[v*3+c]*half; O[v*3+c] = Pp[v*3+c]+d; O[n*3+v*3+c] = Pp[v*3+c]-d; }
+  return O;
+}
+function shell(){
+  const {Pp, T, n, B} = offsetBase(), half = P.t/MM/2;
+  if (half <= 0) return {P:Pp, T};
+  const O = offsetPos(half), Sx = [];
+  for (let i=0; i<T.length; i+=3){ Sx.push(T[i], T[i+1], T[i+2]); Sx.push(T[i]+n, T[i+2]+n, T[i+1]+n); }
+  for (let i=0; i<B.length; i+=2){ const a = B[i], b = B[i+1]; Sx.push(a, b, b+n, a, b+n, a+n); }
   return {P:O, T:Sx};
+}
+// 加厚预览：上下两层都保持原朝向（这样两侧颜色和中面一致），侧边单独着色
+function thickDisp(){
+  const {T, n, remap, B} = offsetBase(), O = offsetPos(P.t/MM/2);
+  const idx = new Uint32Array(T.length*2); idx.set(T); for (let i=0; i<T.length; i++) idx[T.length+i] = T[i]+n;
+  const rim = new Uint32Array(B.length*3);
+  for (let i=0, k=0; i<B.length; i+=2){ const a = B[i], b = B[i+1]; rim.set([a, b, b+n, a, b+n, a+n], k); k += 6; }
+  const L = cur.lin, lin = new Uint32Array(L.length*2);
+  for (let i=0; i<L.length; i++){ lin[i] = remap[L[i]]; lin[L.length+i] = remap[L[i]]+n; }
+  return {pos:O, idx, rim, lin};
 }
 function stl(){
   const {P:Q, T} = shell(), nT = T.length/3;
