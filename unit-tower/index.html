@@ -91,7 +91,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     </div>
 
     <div class="sec" id="secThick">
-      <h2>加厚 <span>开放面才需要</span></h2>
+      <h2>加厚 <span>两侧各一半 · 自动统一法线</span></h2>
       <div class="row"><label>厚度</label><span><input class="num" id="nThick" type="number" step="0.01"><span class="unit">m</span></span></div>
       <input type="range" id="rThick" min="0.01" max="1" step="0.01">
     </div>
@@ -276,26 +276,157 @@ const Core = (() => {
     return N;
   }
 
-  // Offset Mesh (create solid): offset copy along the normals, original reversed, side walls on the boundary
-  function thicken(V, F, t, boundary) {
+  // ---- unify normals + two-sided shell (works for non-orientable patch assemblies) ----
+  function faceNormals(V, F) {
+    const nf = F.length / 3, N = new Float64Array(nf * 3), A = new Float64Array(nf);
+    for (let f = 0; f < nf; f++) {
+      const a = F[f * 3] * 3, b = F[f * 3 + 1] * 3, c = F[f * 3 + 2] * 3;
+      const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2];
+      const wx = V[c] - V[a], wy = V[c + 1] - V[a + 1], wz = V[c + 2] - V[a + 2];
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      N[f * 3] = nx / l; N[f * 3 + 1] = ny / l; N[f * 3 + 2] = nz / l; A[f] = l / 2;
+    }
+    return { N, A };
+  }
+  // edge -> [face, startVertex, face, startVertex, ...]
+  function edgeFaces(F, nv) {
+    const m = new Map();
+    for (let f = 0; f < F.length / 3; f++)
+      for (let e = 0; e < 3; e++) {
+        const a = F[f * 3 + e], b = F[f * 3 + (e + 1) % 3];
+        const k = a < b ? a * nv + b : b * nv + a;
+        let l = m.get(k); if (!l) m.set(k, l = []);
+        l.push(f, a, e);
+      }
+    return m;
+  }
+
+  // like Rhino UnifyMeshNormals, but crossing the smoothest edges first, so that edges that can
+  // never agree (twisted assemblies) end up where the surface turns over rather than mid-panel
+  function unifyNormals(V, F) {
+    const nv = V.length / 3, nf = F.length / 3;
+    const { N } = faceNormals(V, F);
+    const em = edgeFaces(F, nv);
+    const deg = new Uint32Array(nf + 1);
+    for (const l of em.values()) if (l.length === 6) { deg[l[0] + 1]++; deg[l[3] + 1]++; }
+    for (let i = 0; i < nf; i++) deg[i + 1] += deg[i];
+    const nbF = new Uint32Array(deg[nf]), nbS = new Uint8Array(deg[nf]), nbQ = new Float32Array(deg[nf]);
+    const fill = deg.slice(0, nf);
+    for (const l of em.values()) if (l.length === 6) {
+      const f = l[0], g = l[3], s = l[1] === l[4] ? 1 : 0;
+      const q = Math.abs(N[f * 3] * N[g * 3] + N[f * 3 + 1] * N[g * 3 + 1] + N[f * 3 + 2] * N[g * 3 + 2]);
+      let i = fill[f]++; nbF[i] = g; nbS[i] = s; nbQ[i] = q;
+      i = fill[g]++; nbF[i] = f; nbS[i] = s; nbQ[i] = q;
+    }
+    const flip = new Int8Array(nf).fill(-1);
+    const hq = [], hf = [], hg = [], hs = [];
+    const push = (q, f, g, s) => {
+      let i = hq.length; hq.push(q); hf.push(f); hg.push(g); hs.push(s);
+      while (i > 0) { const p = (i - 1) >> 1; if (hq[p] >= hq[i]) break; swap(p, i); i = p; }
+    };
+    const swap = (i, j) => { let t = hq[i]; hq[i] = hq[j]; hq[j] = t; t = hf[i]; hf[i] = hf[j]; hf[j] = t; t = hg[i]; hg[i] = hg[j]; hg[j] = t; t = hs[i]; hs[i] = hs[j]; hs[j] = t; };
+    const pop = () => {
+      const r = [hf[0], hg[0], hs[0]];
+      const last = hq.length - 1; swap(0, last); hq.pop(); hf.pop(); hg.pop(); hs.pop();
+      let i = 0;
+      for (;;) { const a = 2 * i + 1, b = a + 1; let m = i; if (a < hq.length && hq[a] > hq[m]) m = a; if (b < hq.length && hq[b] > hq[m]) m = b; if (m === i) break; swap(m, i); i = m; }
+      return r;
+    };
+    // seed each connected patch with its largest-area-agreeing start: keep the majority orientation
+    for (let s0 = 0; s0 < nf; s0++) {
+      if (flip[s0] >= 0) continue;
+      flip[s0] = 0;
+      const members = [s0];
+      for (let i = deg[s0]; i < deg[s0 + 1]; i++) push(nbQ[i], s0, nbF[i], nbS[i]);
+      while (hq.length) {
+        const [f, g, s] = pop();
+        if (flip[g] >= 0) continue;
+        flip[g] = flip[f] ^ s; members.push(g);
+        for (let i = deg[g]; i < deg[g + 1]; i++) if (flip[nbF[i]] < 0) push(nbQ[i], g, nbF[i], nbS[i]);
+      }
+      let k = 0; for (const f of members) k += flip[f];
+      if (k * 2 > members.length) for (const f of members) flip[f] ^= 1;
+    }
+    const F2 = new Uint32Array(F);
+    let flipped = 0;
+    for (let f = 0; f < nf; f++) if (flip[f]) { flipped++; const t = F2[f * 3 + 1]; F2[f * 3 + 1] = F2[f * 3 + 2]; F2[f * 3 + 2] = t; }
+    let before = 0;
+    for (const l of em.values()) if (l.length === 6 && l[1] === l[4]) before++;
+    return { F: F2, flipped, before };
+  }
+
+  // two-sided thickening (total t, t/2 each side) of a unified mesh. Where the orientation cannot
+  // agree ("twist" edges) the sheet is cut, and top/bottom of the two sides are stitched crosswise,
+  // so the shell stays closed and continuous.
+  function shell(V, F0, t) {
     const nv = V.length / 3;
-    const N = vertexNormals(V, F);
-    const V2 = new Float64Array(nv * 6);
-    V2.set(V, 0);
-    for (let i = 0; i < nv * 3; i++) V2[nv * 3 + i] = V[i] + N[i] * t;
-    const F2 = [];
-    for (let k = 0; k < F.length; k += 3) {
-      F2.push(F[k], F[k + 2], F[k + 1]);
-      F2.push(F[k] + nv, F[k + 1] + nv, F[k + 2] + nv);
+    const u = unifyNormals(V, F0);
+    const F = u.F, nf = F.length / 3;
+    const { N, A } = faceNormals(V, F);
+    const em = edgeFaces(F, nv);
+    // corners (face*3+k) -> vertex copies; join corners across smooth, agreeing edges
+    const P = new Int32Array(nf * 3); for (let i = 0; i < P.length; i++) P[i] = i;
+    const find = x => { while (P[x] !== x) { P[x] = P[P[x]]; x = P[x]; } return x; };
+    const join = (a, b) => { a = find(a); b = find(b); if (a !== b) P[a] = b; };
+    const corner = (f, v) => f * 3 + (F[f * 3] === v ? 0 : F[f * 3 + 1] === v ? 1 : 2);
+    const twist = [];
+    const open = [];
+    for (const l of em.values()) {
+      if (l.length === 6) {
+        const f = l[0], g = l[3], a = l[1], b = F[f * 3 + (l[2] + 1) % 3];
+        if (l[1] !== l[4]) { join(corner(f, a), corner(g, a)); join(corner(f, b), corner(g, b)); }
+        else twist.push(f, g, a, b);
+      } else for (let i = 0; i < l.length; i += 3) open.push(l[i], l[i + 2]);
     }
-    for (const [a, b] of boundary) {
-      F2.push(a, b, b + nv);
-      F2.push(a, b + nv, a + nv);
+    // copies related across twist edges, with parity (opposite sides)
+    const Q = new Int32Array(nf * 3), R = new Uint8Array(nf * 3);
+    for (let i = 0; i < Q.length; i++) Q[i] = i;
+    const findQ = x => { let p = 0; const path = []; while (Q[x] !== x) { path.push(x); p ^= R[x]; x = Q[x]; } let acc = p; for (const y of path) { const r = R[y]; Q[y] = x; R[y] = acc; acc ^= r; } return [x, p]; };
+    const joinQ = (a, b, par) => { const [ra, pa] = findQ(a), [rb, pb] = findQ(b); if (ra !== rb) { Q[ra] = rb; R[ra] = pa ^ pb ^ par; } };
+    for (let i = 0; i < twist.length; i += 4) {
+      const [f, g, a, b] = [twist[i], twist[i + 1], twist[i + 2], twist[i + 3]];
+      joinQ(find(corner(f, a)), find(corner(g, a)), 1);
+      joinQ(find(corner(f, b)), find(corner(g, b)), 1);
     }
-    const out = new Uint32Array(F2);
-    const vc = volumeCentroid(V2, out);
-    if (vc.vol < 0) for (let k = 0; k < out.length; k += 3) { const s = out[k + 1]; out[k + 1] = out[k + 2]; out[k + 2] = s; }
-    return { V: V2, F: out };
+    // normal per cluster (sum of face normals, sign by side)
+    const acc = new Map();
+    const vOf = new Int32Array(nf * 3);
+    for (let c = 0; c < nf * 3; c++) {
+      const f = (c / 3) | 0, g = find(c);
+      const [root, par] = findQ(g);
+      vOf[c] = F[c];
+      let e = acc.get(root); if (!e) acc.set(root, e = [0, 0, 0, F[c]]);
+      const sg = par ? -1 : 1, w = A[f];
+      e[0] += sg * N[f * 3] * w; e[1] += sg * N[f * 3 + 1] * w; e[2] += sg * N[f * 3 + 2] * w;
+    }
+    const outV = [];
+    const idx = new Map();
+    for (const [root, e] of acc) {
+      const v = e[3] * 3;
+      let l = Math.hypot(e[0], e[1], e[2]);
+      let nx = e[0], ny = e[1], nz = e[2];
+      if (l < 1e-12) { nx = 0; ny = 0; nz = 1; l = 1; }
+      const h = t / 2 / l;
+      const i = outV.length / 3;
+      outV.push(V[v] + nx * h, V[v + 1] + ny * h, V[v + 2] + nz * h, V[v] - nx * h, V[v + 1] - ny * h, V[v + 2] - nz * h);
+      idx.set(root, i);
+    }
+    const top = c => { const [root, par] = findQ(find(c)); return idx.get(root) + par; };
+    const bot = c => { const [root, par] = findQ(find(c)); return idx.get(root) + 1 - par; };
+    const out = [];
+    for (let f = 0; f < nf; f++) {
+      const c = f * 3;
+      out.push(top(c), top(c + 1), top(c + 2), bot(c), bot(c + 2), bot(c + 1));
+    }
+    for (let i = 0; i < open.length; i += 2) {
+      const f = open[i], e = open[i + 1];
+      const ca = f * 3 + e, cb = f * 3 + (e + 1) % 3;
+      out.push(bot(ca), bot(cb), top(cb), bot(ca), top(cb), top(ca));
+    }
+    const Vo = new Float64Array(outV), Fo = new Uint32Array(out);
+    if (volumeCentroid(Vo, Fo).vol < 0) for (let k = 0; k < Fo.length; k += 3) { const x = Fo[k + 1]; Fo[k + 1] = Fo[k + 2]; Fo[k + 2] = x; }
+    return { V: Vo, F: Fo, flipped: u.flipped, before: u.before, twist: twist.length / 4 };
   }
 
   // per-floor scale factors; for an even floor count this equals the gh
@@ -421,7 +552,7 @@ const Core = (() => {
     return new Float32Array(tri);
   }
 
-  return { parseSTL, bbox, weld, edgeStats, volumeCentroid, areaCentroid, vertexNormals, thicken, profile, floors, xf, exportSTL, exportOBJ, export3DM, samplePlate };
+  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, floors, xf, exportSTL, exportOBJ, export3DM, samplePlate };
 })();
 if (typeof module !== 'undefined') module.exports = Core;
 // ===================== CORE-END =====================
@@ -442,8 +573,8 @@ function rebuild() {
   let V = baseMesh.V, F = baseMesh.F, thick = false;
   if (!es.closed && es.boundary.length && es.nonManifold === 0) {
     const t = S.thick / S.unit;
-    const r = Core.thicken(V, F, t, es.boundary);
-    V = r.V; F = r.F; thick = true;
+    const r = Core.shell(V, F, t);
+    V = r.V; F = r.F; thick = { flipped: r.flipped, before: r.before, twist: r.twist };
   }
   const bb = Core.bbox(V);
   let c;
@@ -468,10 +599,13 @@ function updateInfo() {
   const es = geo.es;
   const state = es.closed ? '闭合实体 · 直接使用'
     : es.nonManifold ? '<span class="warn">非流形网格 · 无法加厚，按原样使用</span>'
-    : '开放面 · 已按厚度加厚成实体';
+    : '开放面 · 已两侧加厚成实体';
+  const fix = geo.thick && geo.thick.before
+    ? `<br><span class="dot"></span>已统一法线：翻转 ${geo.thick.flipped.toLocaleString()} 个面` + (geo.thick.twist ? `；${geo.thick.twist} 条扭转边已缝合` : '')
+    : '';
   $('info').innerHTML =
     `${fmt(s[0] * u)} × ${fmt(s[1] * u)} × ${fmt(s[2] * u, 3)} m · ${(baseMesh.F.length / 3).toLocaleString()} 面<br>` +
-    `<span class="dot"></span>${state}`;
+    `<span class="dot"></span>${state}${fix}`;
   $('secThick').classList.toggle('hidden', !geo.thick);
   $('fname').textContent = fileName.length > 22 ? fileName.slice(0, 20) + '…' : fileName;
 }
