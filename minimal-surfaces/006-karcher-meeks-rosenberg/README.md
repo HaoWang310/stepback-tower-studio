@@ -1,6 +1,6 @@
 # 006 · Karcher–Meeks–Rosenberg（KMR）
 
-- **分类**：C · 双周期 · 平行端 · 亏格 1
+- **分类**：B · 双周期 · 平行端 · 亏格 1
 - **用途标签**：结构 · 立面 · 可打印
 - **来源**：H. Karcher；W. H. Meeks III 与 H. Rosenberg；M. Weber，Minimal Surface Repository（`KMR-1.nb`、`KMR-2 (g=1).nb`、`KMR-3.nb` 及 PoVRay 场景）
 - **收录版本**：KMR-1（Case 1），a = 0.1，即原图对照里的第 01 号。另外 4 组参数 a = 0.3 / 0.5 / 0.7 / 0.9 作为 app 里的预设。
