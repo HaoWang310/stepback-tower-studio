@@ -304,7 +304,7 @@ const EN = {
   '1 个晶胞 · 原图':'1 cell · original', '7 个晶胞':'7 cells', '7 个晶胞 · 3 层':'7 cells · 3 layers', '1 个晶胞 · 3 层':'1 cell · 3 layers',
   '立方晶胞 · 原图':'Cubic cell · original', '蝠鲼 · 2 个基本区域':'Manta · 2 pieces', '1/8 立方':'1/8 cube', '八面体':'Octahedron', '2×2 晶胞阵列':'2×2 cell array',
   '宽窗口':'Wide window', '高墙':'Tall walls', '低矮':'Low', 'a=0.1 · 原图':'a=0.1 · original',
-  '镜像 · 同原图':'Mirrored · as original', '原作用 POV-Ray 渲染，左手坐标系让画面成了镜像；关掉看真实的螺旋方向':'The original was rendered in POV-Ray, whose left-handed axes mirror the image; turn off to see the true handedness',
+  '镜像 · 同原图':'Mirrored · as original', '原作用 POV-Ray 渲染，左手坐标系让画面成了镜像；关掉看真实的螺旋方向。送去塔楼和导出 STL 都跟画面一致':'The original was rendered in POV-Ray, whose left-handed axes mirror the image; turn off to see the true handedness. Sending to the tower and STL export follow the view',
   // 塔楼
   '竖向 {n} 段':'{n} segments', 'c 轴竖直':'c-axis vertical', 'a 轴竖直':'a-axis vertical', '立方体边竖直':'cube edge vertical', '体对角线竖直':'body diagonal vertical',
   '晶格边竖直':'lattice edge vertical', '晶格对角竖直':'lattice diagonal vertical', 'x 方向竖直':'x vertical', 'y 方向竖直':'y vertical',
@@ -1311,7 +1311,7 @@ const rowHTML = ([k,lab,mn,mx,st]) => `<div class="row${k==='op' && $('#ref').st
      <input type="range" id="s-${k}" data-k="${k}" min="${mn}" max="${mx}" step="${st}"></div>`;
 function setupPanel(){
   $('#chips').innerHTML = S.presets.map((p, i) => `<button type="button" data-i="${i}">${esc(T(p.name))}</button>`).join('')
-    + (S.pov ? `<button type="button" id="b-mir" aria-pressed="true" title="${esc(T('原作用 POV-Ray 渲染，左手坐标系让画面成了镜像；关掉看真实的螺旋方向'))}">${T('镜像 · 同原图')}</button>` : '');
+    + (S.pov ? `<button type="button" id="b-mir" aria-pressed="true" title="${esc(T('原作用 POV-Ray 渲染，左手坐标系让画面成了镜像；关掉看真实的螺旋方向。送去塔楼和导出 STL 都跟画面一致'))}">${T('镜像 · 同原图')}</button>` : '');
   const sh = k => SHARED.find(x => x[0] === k), ori = S.spec.find(([k]) => k === 'ori');
   $('#rows').innerHTML = grp('look', '外观', themeHTML())
     + grp('form', '形体参数', S.spec.filter(([k]) => k !== 'ori').map(rowHTML).join('') + rowHTML(sh('op')))
@@ -1432,6 +1432,9 @@ function povDecomp(){
   const QT = [Q[0],Q[3],Q[6], Q[1],Q[4],Q[7], Q[2],Q[5],Q[8]];
   return {O, QT};
 }
+// 画面里的整体变换（原图视角的翻转 / 镜像）：送出和导出都按它来，保证所见即所得
+const det3 = X => X[0]*(X[4]*X[8]-X[5]*X[7]) - X[1]*(X[3]*X[8]-X[5]*X[6]) + X[2]*(X[3]*X[7]-X[4]*X[6]);
+function dispO(){ return povView() ? povDecomp().O : I3; }
 function setGroupMatrix(){
   if (!group) return;
   group.matrixAutoUpdate = false;
@@ -1663,6 +1666,13 @@ function thickDisp(){
 }
 function stl(){
   let {P:Q, T} = shell();
+  const O = dispO();
+  if (O !== I3){
+    const Q2 = new Float32Array(Q.length);
+    for (let v=0; v<Q.length; v+=3){ const p = mv(O, [Q[v], Q[v+1], Q[v+2]]); Q2[v] = p[0]; Q2[v+1] = p[1]; Q2[v+2] = p[2]; }
+    Q = Q2;
+    if (det3(O) < 0){ T = Array.from(T); for (let i=0; i<T.length; i+=3){ const x = T[i+1]; T[i+1] = T[i+2]; T[i+2] = x; } }
+  }
   const nT = T.length/3;
   const buf = new ArrayBuffer(84 + 50*nT), dv = new DataView(buf);
   const head = (S.name + ' (M. Weber), mm, Z up').replace(/[^\x20-\x7e]/g, '-').slice(0, 80);
@@ -1682,9 +1692,10 @@ function stl(){
 }
 // 单体 → 塔楼：开放中面（按当前摆放 / 组合），Z 朝上，一个单体 = 一层 3.6 m
 function unitSTL(){
-  const {Pp, T} = offsetBase(), n = Pp.length/3;
+  const {Pp} = offsetBase(), n = Pp.length/3, O = dispO(), flipW = det3(O) < 0;
+  let T = offsetBase().T; if (flipW){ T = Array.from(T); for (let i=0; i<T.length; i+=3){ const x = T[i+1]; T[i+1] = T[i+2]; T[i+2] = x; } }
   const lo = [Infinity,Infinity,Infinity], hi = [-Infinity,-Infinity,-Infinity], Q = new Float64Array(n*3);
-  for (let v=0; v<n; v++){ const p = [Pp[v*3], -Pp[v*3+2], Pp[v*3+1]]; for (let k=0; k<3; k++){ Q[v*3+k] = p[k]; if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; } }
+  for (let v=0; v<n; v++){ const d = mv(O, [Pp[v*3], Pp[v*3+1], Pp[v*3+2]]), p = [d[0], -d[2], d[1]]; for (let k=0; k<3; k++){ Q[v*3+k] = p[k]; if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; } }
   const s = 3.6/((hi[2]-lo[2]) || 1), cx = (lo[0]+hi[0])/2, cy = (lo[1]+hi[1])/2;
   const nT = T.length/3, buf = new ArrayBuffer(84 + 50*nT), dv = new DataView(buf);
   const head = (S.no + ' ' + S.name + ' unit, m, Z up').replace(/[^\x20-\x7e]/g, '-').slice(0, 80);
@@ -1711,7 +1722,7 @@ function unitThumb(){
     return c.toDataURL('image/jpeg', 0.82);
   } catch (e){ return ''; }
 }
-async function sendToTower(){
+async function sendToTower(hash){
   if (!cur) return;
   const buf = unitSTL();
   const slug = (S.name + '').normalize('NFKD').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unit';
@@ -1733,9 +1744,11 @@ async function sendToTower(){
   try { await idbPutUnit({name, buf, at:Date.now(), meta}); }
   catch (e){ toast('保存单体失败，请重试'); return; }
   toast('单体已存好，正在打开塔楼生成器…');
-  setTimeout(() => { location.href = TOWER_URL; }, 350);
+  setTimeout(() => { location.href = TOWER_URL + (hash || ''); }, 350);
 }
-$('#b-tower').addEventListener('click', sendToTower);
+$('#b-tower').addEventListener('click', () => sendToTower());
+// 步骤条「② 塔楼」「③ 打印」：同样先送当前单体，再打开
+for (const [id, h] of [['#st2', ''], ['#st3', '#print']]) $(id).addEventListener('click', e => { if (!cur) return; e.preventDefault(); sendToTower(h); });
 const CRC = (() => { const t = new Uint32Array(256); for (let n=0; n<256; n++){ let c = n; for (let k=0; k<8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 function crc32(u8){ let c = 0xFFFFFFFF; for (let i=0; i<u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
 function put(dv, list){ list.forEach(([o,v,s]) => s === 4 ? dv.setUint32(o, v, true) : dv.setUint16(o, v, true)); }
