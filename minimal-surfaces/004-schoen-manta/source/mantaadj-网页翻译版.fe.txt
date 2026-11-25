@@ -1,0 +1,201 @@
+// mantaadj.fe
+// Schoen 蝠鲼曲面的伴随曲面。
+
+// 程序员：Ken Brakke，brakke@susqu.edu，http://www.susqu.edu
+
+/* 命令：
+   gogo - 典型的演化，包括伴随演化
+   showcube - 显示一个晶胞
+   showcubelet - 显示晶胞的 1/8，如同网页上显示的那样
+   showocta - 显示八面体晶胞，如网页所示
+   octa_edge - 为八面体单元创建轮廓边
+   关闭变换 - 仅显示单个基本区域
+   setcolor - 将网页的一侧涂成黄色，就像我的网页一样。
+
+   要关闭图形显示中的所有边缘显示，
+      在图形窗口中按下“e”键。
+*/
+
+参数 alpha = 0.203415322692705 // 形状参数，用于周期性消除
+
+约束 1 // 伴随中的镜像平面
+公式：x + z = 1
+
+//伴随变换后使用的约束
+约束条件 3 公式：x = z
+约束条件 4 公式：y = 0.5
+约束条件 5 公式：y = x
+约束条件 6 公式：x = 0
+约束条件 7 公式：y+z = 1
+
+视图转换生成器 8
+ -1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 // a: x 镜像
+  0 1 0 0 1 0 0 0 0 0 1 0 0 0 0 1 // b: xy 交换
+  1 0 0 0 0 0 -1 1 0 -1 0 1 0 0 0 1 // c: y+z=1 镜像
+  swap_colors 0 0 1 0 0 -1 0 1 1 0 0 0 0 0 0 1 // d: C2 旋转
+ -1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 // e: x 镜像
+  1 0 0 0 0 -1 0 0 0 0 1 0 0 0 0 1 // f: y 镜像
+  1 0 0 0 0 1 0 0 0 0 -1 0 0 0 0 1 // g: z 镜像
+  1 0 0 0 0 1 0 0 0 0 -1 2 0 0 0 1 // h: z=1 镜像
+
+
+顶点
+1 0 0 0 固定
+2 1 0 0 固定
+3 (1-alpha) (2*alpha-1) alpha 固定
+4 0 alpha alpha 固定
+
+边缘
+1 2 1 固定
+2 1 4 固定
+3 4 3 固定
+4 3 2 约束 1
+
+面孔
+1 -4 -3 -2 -1
+
+读
+hessian_normal
+
+// 用窄三角形细化边框边缘
+border := { 细化边 ee，其中价态 == 1 且
+                    (ee.facet[1].area < ee.length^2/3); }
+
+
+// 演化良好，在顶点 2 尖点附近形成了很多面。
+gg := { 细化价态为 1 的边；g 5；r；g 10；u；V；
+          g5；黑森麻布；黑森麻布；
+          g 5；粗麻布；粗麻布；
+          r；g 5；u；V；u；g 5；黑森麻布；黑森麻布；
+          g5；黑森麻布；黑森麻布；
+          r；g 5；u；V；u；g 5；黑森麻布；黑森麻布；
+          g 5；V；u；V；黑森麻布；黑森麻布；
+          r；g 5；u；V；u；g 5；黑森麻布；黑森麻布；
+          边框；g 5；V；u；V；粗麻布；粗麻布；
+        }
+
+// 精细度较低
+gg1 := { 细化价态为 1 的边；g 5；r；g 10；u；V；
+          g5；黑森麻布；黑森麻布；
+          g 5；粗麻布；粗麻布；
+          r；
+          细化原始边 == 1 或原始边 == 3；
+          g 5；u；V；u；g 5；黑森麻布；黑森麻布；
+          g5；黑森麻布；黑森麻布；
+}
+
+//伴随中的一些距离
+计算 := {
+          edge3dy := sum(edge ee where original==3,
+           sum(ee.facet ff, (ff.z*ee.x-ff.x*ee.z)/sqrt(ff.x^2+ff.y^2+ff.z^2)));
+          edge3dz := sum(edge ee where original==3,
+           sum(ee.facet ff, (ff.x*ee.y-ff.y*ee.x)/sqrt(ff.x^2+ff.y^2+ff.z^2)));
+
+          printf " edge3dy + edge3dz: %g \n",edge3dy+edge3dz;
+        }
+
+
+读取“adjoint.cmd”
+
+// 调用此函数进行伴随变换！
+adj := { 取消设置顶点约束 1;
+         取消设置边约束 1；
+         伴随物；
+       }
+
+// 在伴随运算后应用约束
+帧 := {
+    取消固定顶点；取消固定边；
+    minz := min(vertex,z);
+    设置顶点 z z-minz；
+    minx := min(vertex,x);
+    设置顶点 x x-minx；
+    miny := min(vertex,yx);
+    设置顶点 y y-miny；
+    mag := vertex[3].y + vertex[3].z;
+    设置顶点 xx/mag；
+    设置顶点 yy/mag；
+    设置顶点 zz/mag；
+    对于每个原始值为 1 的边 ee，执行以下操作
+    {
+      设置 ee.vertex 约束 6；
+      设置 ee 约束 6；
+    };
+    对于每个原始值为 2 的边 ee，执行以下操作
+    { 设置 ee 约束 7； 设置 ee.顶点约束 7； }；
+    对于每个原始值为 3 的边 ee，执行以下操作
+    { 设置 ee 约束 5； 设置 ee.顶点约束 5； }；
+    对于每个原始值为 4 的边 ee，执行以下操作
+    { 设置 ee 约束 3；设置 ee.顶点约束 3；
+      设置 ee 约束 4；设置 ee.顶点约束 4；
+      修复 ee；修复 ee.vertex；
+    };
+}
+
+
+
+
+// 在伴随进化后获得真正的 alpha
+true_alpha := { printf "True alpha: %20.15f\n",
+   sum(原始长度为 2 的边的长度)/sqrt(2)/sum(原始长度为 1 的边的长度)；}
+true := { true_alpha }
+
+// 用于 Postscript 输出的美观边框
+读取“band.cmd”
+带宽 := 0.005;
+bandcolor := 黑色;
+带状 := {
+   edgenum := 1;
+   while ( edgenum <= 4 ) do
+   { 设置带内边缘原始值==边缘编号；创建带状边缘；
+     edgenum += 1;
+   }
+}
+
+// 将内部颜色设置为黄色
+setcolor := { 设置 facet frontcolor 黄色 }
+
+// 典型的演变
+gogo := { gg; adj; frame; show_trans "R"; V; V; hessian; hessian; }
+
+// 典型的演变过程，精细程度较低
+gogo1 := { gg1; adj; frame; show_trans "R"; V; V; hessian; hessian; }
+
+// 显示 1/8 晶胞
+showcubelet := { transform_expr "bdbdbd";
+                 显示价态为 1 的边；  
+                 显示转换“R”；}
+
+// 显示晶胞
+showcube := { transform_expr "hfebdbdbd";
+              显示价态为 1 的边；  
+              显示转换“R”；}
+
+// 显示八面体晶胞
+showocta := { transform_expr "babadad";             
+                 显示价态小于等于 1 的边；
+                 显示翻译“R”；
+               }
+octa_edge := { va := new_vertex(.5,.5,.5);
+                  vb := new_vertex(0,0,1);
+                  newe1 := new_edge(va,vb);
+                  设置 edge[newe1] 不进行精细化；
+                  设置 edge[newe1] 裸露；
+                  设置 edge[newe1] 固定；
+                  vc := new_vertex(0,0,0);
+                  newe2 := new_edge(vb,vc);
+            }
+
+
+/* 命令：
+   gogo - 典型的演化，包括伴随演化
+   showcube - 显示一个晶胞
+   showcubelet - 显示晶胞的 1/8，如同网页上显示的那样
+   showocta - 显示八面体晶胞，如网页所示
+   octa_edge - 为八面体单元创建轮廓边
+   关闭变换 - 仅显示单个基本区域
+   setcolor - 将网页的一侧涂成黄色，就像我的网页一样。
+
+   要关闭图形显示中的所有边缘显示，
+      在图形窗口中按下“e”键。
+*/

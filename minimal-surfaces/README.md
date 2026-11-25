@@ -23,6 +23,7 @@
 | 001 | Scherk–Enneper（带周期 Enneper 端的 Scherk 鞍塔） | B · 单周期 | 周期 Enneper 端 | Weierstrass 数值积分 | M. Weber · Minimal Surface Repository（Mathematica notebook） | 立面 · 结构 · 可打印 | 2026-11-25 |
 | 002 | Helicoidal Karcher–Scherk（螺旋运动不变的 Karcher–Scherk 鞍塔） | B · 单周期 | 螺旋面端 | Weierstrass 数值积分 + 周期条件求解 | H. Karcher 1988 · M. Weber（Mathematica notebook） | 屋面 · 结构 · 可打印 | 2026-11-25 |
 | 003 | Schoen T'–R'（中心体 + 六条侧向隧道） | D · 三周期 | 六方棱柱晶胞 | Surface Evolver 数值求解（Plateau 问题 + 伴随曲面） | A. Schoen · K. Brakke（TRadj.fe） | 结构 · 可打印 | 2026-11-25 |
+| 004 | Schoen Manta（亏格 19 的蝠鲼面） | D · 三周期 | 立方晶胞 | Surface Evolver 数值求解（自由边 Plateau 问题 + 伴随曲面） | A. Schoen · K. Brakke（mantaadj.fe） | 结构 · 立面 · 可打印 | 2026-11-25 |
 
 ## 文件结构
 
@@ -42,10 +43,14 @@ minimal-surfaces/
 │   └── source/
 │       ├── *.nb / *.cdf          原作者 Mathematica 文件
 │       └── povray/k{k}-a{a}/     原作 POV-Ray 场景、网格、渲染图（11 组）
-└── 003-schoen-tr/                D · 三周期 · 六方棱柱晶胞
+├── 003-schoen-tr/                D · 三周期 · 六方棱柱晶胞
+│   ├── reference/原图.png
+│   ├── source/TRadj.fe           K. Brakke 的 Surface Evolver 脚本
+│   └── solver/                   Python 复现（没有公式，离线数值求解）
+└── 004-schoen-manta/             D · 三周期 · 立方晶胞
     ├── reference/原图.png
-    ├── source/TRadj.fe           K. Brakke 的 Surface Evolver 脚本
-    └── solver/                   Python 复现（没有公式，离线数值求解）
+    ├── source/mantaadj-网页翻译版.fe.txt   K. Brakke 的 Evolver 脚本（网页翻译版）
+    └── solver/                   Python 复现 + 曲面片数据
 ```
 
 每个曲面文件夹都是同一结构：`reference/`（你发来的图）、`source/`（原作者文件）、`README.md`（公式与验证）、`preview.jpg`。
