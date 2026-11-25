@@ -65,7 +65,7 @@ td a{color:#fff;text-decoration:none;border-bottom:1px solid #3A414B}
 .place .pl{display:flex;align-items:baseline;gap:8px;font-size:13px;color:#C9D1DC;margin:8px 0 6px}
 .place .pl small{font-size:11px;color:#7C8592}
 .pseg{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:3px;border-radius:12px;background:#1B1F25}
-.pseg button{height:30px;border:0;border-radius:9px;background:transparent;color:#C9D1DC;font:inherit;font-size:12px;cursor:pointer}
+.pseg button{height:30px;padding:0;border:0;border-radius:9px;background:transparent;color:#C9D1DC;font:inherit;font-size:12px;white-space:nowrap;cursor:pointer}
 .pseg button.on{background:#E8EAED;color:#0b0d10}
 .pseg button:disabled{color:#4A515C;cursor:not-allowed}
 .pbtns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
@@ -157,6 +157,7 @@ function toast(msg){
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2800);
 }
 const MM = 10; // 1 模型单位 = 10 mm
+let cur = null;   // 当前曲面几何（摆放、加厚、导出共用）
 
 /* =====================================================================
    001 · Scherk–Enneper（M. Weber, "Singly Periodic Scherk Surface with Enneper Ends"）
@@ -967,7 +968,7 @@ const rimMat = new THREE.MeshLambertMaterial({side:THREE.DoubleSide});
 const contactMat = new THREE.LineBasicMaterial({color:0x00C8D2});
 const groundMat = new THREE.MeshBasicMaterial({color:0x1A1D22, transparent:true, opacity:0.55, side:THREE.DoubleSide, depthWrite:false});
 let ground = null;
-let group = null, cur = null, wire = true, radius = 1;
+let group = null, wire = true, radius = 1;
 function applyPalette(){
   const pl = PALETTES[P.pal || S.pal || 'se'];
   front.color.setHex(pl.front); back.color.setHex(pl.back); lineMat.color.setHex(pl.line); lineMat.opacity = pl.op;
