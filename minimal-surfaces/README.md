@@ -14,6 +14,7 @@
   - D · 三周期 TPMS（沿空间三个方向重复）
 - **二级：端的类型**（与原作者 M. Weber 的单周期分类一致）：环状端（鞍塔翼）、螺旋面端、平面端、悬链面端、周期 Enneper 端、混合端
 - **三周期类（D）的二级**：按晶胞形状（立方 / 四方 / 六方棱柱 …）
+- **双周期类（C）的二级**：按上下端是否平行（非平行端 / 平行端），并注明商曲面的亏格
 - **建筑用途标签**：屋面 · 立面 · 结构 · 景观 · 可打印（方便从设计角度筛选，不改变数学分类）
 
 ## 文字清单
@@ -24,6 +25,8 @@
 | 002 | Helicoidal Karcher–Scherk（螺旋运动不变的 Karcher–Scherk 鞍塔） | B · 单周期 | 螺旋面端 | Weierstrass 数值积分 + 周期条件求解 | H. Karcher 1988 · M. Weber（Mathematica notebook） | 屋面 · 结构 · 可打印 | 2026-11-25 |
 | 003 | Schoen T'–R'（中心体 + 六条侧向隧道） | D · 三周期 | 六方棱柱晶胞 | Surface Evolver 数值求解（Plateau 问题 + 伴随曲面） | A. Schoen · K. Brakke（TRadj.fe） | 结构 · 可打印 | 2026-11-25 |
 | 004 | Schoen Manta（亏格 19 的蝠鲼面） | D · 三周期 | 立方晶胞 | Surface Evolver 数值求解（自由边 Plateau 问题 + 伴随曲面） | A. Schoen · K. Brakke（mantaadj.fe） | 结构 · 立面 · 可打印 | 2026-11-25 |
+| 005 | Scherk 双周期曲面（Scherk 第一曲面） | C · 双周期 | 非平行端 · 亏格 0 | Weierstrass 闭式解 | H. F. Scherk · M. Weber（Doubly Scherk (g=0).nb） | 立面 · 结构 · 可打印 | 2026-11-25 |
+| 006 | Karcher–Meeks–Rosenberg（KMR-1，a=0.1） | C · 双周期 | 平行端 · 亏格 1 | Weierstrass 数值积分 | H. Karcher · Meeks–Rosenberg · M. Weber（KMR-1/2/3.nb） | 结构 · 立面 · 可打印 | 2026-11-25 |
 
 ## 文件结构
 
@@ -47,10 +50,18 @@ minimal-surfaces/
 │   ├── reference/原图.png
 │   ├── source/TRadj.fe           K. Brakke 的 Surface Evolver 脚本
 │   └── solver/                   Python 复现（没有公式，离线数值求解）
-└── 004-schoen-manta/             D · 三周期 · 立方晶胞
-    ├── reference/原图.png
-    ├── source/mantaadj-网页翻译版.fe.txt   K. Brakke 的 Evolver 脚本（网页翻译版）
-    └── solver/                   Python 复现 + 曲面片数据
+├── 004-schoen-manta/             D · 三周期 · 立方晶胞
+│   ├── reference/原图.png
+│   ├── source/mantaadj-网页翻译版.fe.txt   K. Brakke 的 Evolver 脚本（网页翻译版）
+│   └── solver/                   Python 复现 + 曲面片数据
+├── 005-scherk-doubly-periodic/   C · 双周期 · 非平行端
+│   ├── reference/原图-scherk2a.png
+│   ├── source/                   原 notebook + povray/
+│   └── solver/                   Python 复现 + 按原相机重渲染比对
+└── 006-karcher-meeks-rosenberg/  C · 双周期 · 平行端
+    ├── reference/                选定原图（KMR-1 a=0.1）+ 12 组原图对照
+    ├── source/                   KMR-1/2/3.nb + povray/KMR-1、KMR-2、KMR-3
+    └── solver/                   Python 复现 + 逐点比对
 ```
 
 每个曲面文件夹都是同一结构：`reference/`（你发来的图）、`source/`（原作者文件）、`README.md`（公式与验证）、`preview.jpg`。
