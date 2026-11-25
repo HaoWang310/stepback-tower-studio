@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>单体塔楼生成器 · Unit Tower</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#000; --panel:#0b0b0c; --line:#1c1c1e; --line2:#2c2c2e;
+  --t1:#f5f5f7; --t2:rgba(245,245,247,.56); --t3:rgba(245,245,247,.34);
+  --accent:#ff6a3d; --r:12px;
+  --font:"DM Sans",-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--font);font-size:13px;-webkit-font-smoothing:antialiased;overflow:hidden}
+#app{display:flex;height:100%;gap:12px;padding:12px}
+#panel{width:300px;flex:none;background:var(--panel);border:0.5px solid var(--line2);border-radius:16px;overflow-y:auto;padding:18px 18px 22px;scrollbar-width:thin;scrollbar-color:#2c2c2e transparent}
+#view{position:relative;flex:1;min-width:0;background:#030303;border:0.5px solid var(--line2);border-radius:16px;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+canvas:active{cursor:grabbing}
+h1{font-size:17px;font-weight:500;letter-spacing:-.01em}
+.sub{color:var(--t2);font-size:12px;margin-top:4px;line-height:1.5}
+.sec{margin-top:22px;padding-top:18px;border-top:0.5px solid var(--line)}
+.sec h2{font-size:13px;font-weight:500;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.sec h2 span{color:var(--t3);font-weight:400;font-size:11px}
+#drop{border:0.8px dashed #48484a;border-radius:10px;padding:16px 10px;text-align:center;color:var(--t2);cursor:pointer;transition:border-color .2s,background .2s;line-height:1.5}
+#drop:hover,#drop.over{border-color:var(--t1);background:rgba(255,255,255,.03);color:var(--t1)}
+#drop b{font-weight:500;color:var(--t1)}
+.info{margin-top:10px;color:var(--t2);font-size:12px;line-height:1.7}
+.info .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:1px}
+.row{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.row:first-of-type{margin-top:0}
+.row label{color:var(--t2)}
+.num{width:66px;background:transparent;border:0;color:var(--t1);font:inherit;text-align:right;padding:2px 0;border-bottom:0.5px solid transparent;outline:none;-moz-appearance:textfield}
+.num:focus{border-bottom-color:var(--t2)}
+.num::-webkit-inner-spin-button,.num::-webkit-outer-spin-button{-webkit-appearance:none}
+.unit{color:var(--t3);margin-left:3px;font-size:12px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:20px;background:transparent;margin-top:4px;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:2px;border-radius:1px;background:linear-gradient(to right,var(--t1) var(--p,50%),#3a3a3c var(--p,50%))}
+input[type=range]::-moz-range-track{height:2px;border-radius:1px;background:#3a3a3c}
+input[type=range]::-moz-range-progress{height:2px;background:var(--t1)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--t1);margin-top:-6px;border:0}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--t1);border:0}
+.seg{display:inline-flex;background:#1c1c1e;border-radius:8px;padding:2px}
+.seg button{border:0;background:transparent;color:var(--t2);font:inherit;font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer}
+.seg button.on{background:var(--t1);color:#000}
+.read{color:var(--t3);font-size:11.5px;margin-top:8px;line-height:1.6}
+.btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.btn{border:0.5px solid #48484a;background:transparent;color:var(--t1);font:inherit;font-weight:500;padding:9px 0;border-radius:9px;cursor:pointer;transition:background .2s}
+.btn:hover{background:rgba(255,255,255,.06)}
+.btn.primary{background:var(--t1);color:#000;border-color:var(--t1)}
+.btn.primary:hover{background:#fff}
+.btn:disabled{opacity:.4;cursor:default}
+.link{background:none;border:0;color:var(--t2);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;margin-top:8px}
+.warn{color:#ff453a}
+#hud{position:absolute;left:0;right:0;bottom:16px;text-align:center;pointer-events:none}
+#hud .a{font-size:13px;color:var(--t1)}
+#hud .b{font-size:11.5px;color:var(--t3);margin-top:4px}
+#tools{position:absolute;top:12px;right:12px;display:flex;gap:6px}
+#tools button{background:rgba(28,28,30,.8);border:0.5px solid var(--line2);color:var(--t2);font:inherit;font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer}
+#tools button:hover{color:var(--t1)}
+#toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(28,28,30,.92);border:0.5px solid var(--line2);padding:8px 14px;border-radius:10px;font-size:12px;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+#err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--t2);text-align:center;padding:30px}
+.hidden{display:none!important}
+@media (max-width:760px){
+  #app{flex-direction:column-reverse;padding:8px;gap:8px}
+  #panel{width:auto;height:46%;border-radius:14px}
+  #view{flex:1}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>单体塔楼生成器</h1>
+    <p class="sub">输入一个单体 STL，按建筑测试.gh 的逻辑叠层、收腰、扭转。</p>
+
+    <div class="sec">
+      <h2>输入 <span id="fname">示例楼板</span></h2>
+      <div id="drop"><b>拖入 STL 单体</b><br>或点击选择文件</div>
+      <input id="file" type="file" accept=".stl,model/stl" hidden>
+      <div class="info" id="info"></div>
+      <div class="row"><label>单位</label>
+        <div class="seg" id="segUnit"><button data-v="0.001">mm</button><button data-v="0.01">cm</button><button data-v="1">m</button></div></div>
+      <div class="row"><label>竖向轴</label>
+        <div class="seg" id="segUp"><button data-v="z" class="on">Z</button><button data-v="y">Y</button></div></div>
+      <div><button class="link" id="btnUnit">示例单体</button> <button class="link" id="btnSample" style="margin-left:12px">示例楼板</button></div>
+    </div>
+
+    <div class="sec" id="secThick">
+      <h2>加厚 <span>开放面才需要</span></h2>
+      <div class="row"><label>厚度</label><span><input class="num" id="nThick" type="number" step="0.01"><span class="unit">m</span></span></div>
+      <input type="range" id="rThick" min="0.01" max="1" step="0.01">
+    </div>
+
+    <div class="sec">
+      <h2>叠层</h2>
+      <div class="row"><label>层数</label><span><input class="num" id="nCount" type="number" step="1"></span></div>
+      <input type="range" id="rCount" min="1" max="120" step="1">
+      <div class="row"><label>净高</label><span><input class="num" id="nGap" type="number" step="0.1"><span class="unit">m</span></span></div>
+      <input type="range" id="rGap" min="0" max="12" step="0.1">
+      <div class="read" id="readStack"></div>
+    </div>
+
+    <div class="sec">
+      <h2>收腰</h2>
+      <div class="row"><label>最细比例</label><span><input class="num" id="nMin" type="number" step="0.01"></span></div>
+      <input type="range" id="rMin" min="0.2" max="1.5" step="0.01">
+      <div class="row"><label>曲线</label>
+        <div class="seg" id="segCurve"><button data-v="linear" class="on">线性</button><button data-v="smooth">平滑</button></div></div>
+      <div class="read" id="readWaist"></div>
+    </div>
+
+    <div class="sec">
+      <h2>扭转</h2>
+      <div class="row"><label>每层角度</label><span><input class="num" id="nRot" type="number" step="0.5"><span class="unit">°</span></span></div>
+      <input type="range" id="rRot" min="-90" max="90" step="0.5">
+      <div class="row"><label>基点</label>
+        <div class="seg" id="segPivot"><button data-v="centroid" class="on">质心</button><button data-v="bbox">包围盒中心</button></div></div>
+      <div class="read" id="readTwist"></div>
+    </div>
+
+    <div class="sec">
+      <h2>导出 <span id="expInfo"></span></h2>
+      <div class="btns">
+        <button class="btn primary" id="exSTL">STL</button>
+        <button class="btn" id="exOBJ">OBJ</button>
+        <button class="btn" id="ex3DM">3DM</button>
+      </div>
+      <div class="read" id="readExport">导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。</div>
+      <button class="link" id="btnReset">恢复 gh 默认参数</button>
+    </div>
+  </aside>
+
+  <main id="view">
+    <canvas id="gl"></canvas>
+    <div id="tools"><button id="btnFit">重置视角</button></div>
+    <div id="toast"></div>
+    <div id="hud"><div class="a" id="hudA"></div><div class="b">拖动旋转 · 右键或 Shift 平移 · 滚轮缩放</div></div>
+    <div id="err"></div>
+  </main>
+</div>
+
+<script>
+// ===================== CORE-BEGIN (pure geometry, no DOM) =====================
+const Core = (() => {
+  function parseSTL(buf) {
+    const dv = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+    let isBinary = false;
+    if (buf.byteLength >= 84) {
+      const n = dv.getUint32(80, true);
+      if (84 + n * 50 === buf.byteLength) isBinary = true;
+    }
+    if (!isBinary) {
+      const head = new TextDecoder().decode(bytes.subarray(0, Math.min(1024, bytes.length))).toLowerCase();
+      if (!(head.trimStart().startsWith('solid') && head.includes('facet'))) {
+        if (buf.byteLength >= 84) isBinary = true;
+      }
+    }
+    if (isBinary) {
+      const n = Math.min(dv.getUint32(80, true), Math.floor((buf.byteLength - 84) / 50));
+      const pos = new Float32Array(n * 9);
+      for (let i = 0; i < n; i++) {
+        const o = 84 + i * 50 + 12;
+        for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + k * 4, true);
+      }
+      return pos;
+    }
+    const text = new TextDecoder().decode(bytes);
+    const re = /vertex\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)/g;
+    const out = [];
+    let m;
+    while ((m = re.exec(text))) out.push(+m[1], +m[2], +m[3]);
+    const usable = out.length - (out.length % 9);
+    return new Float32Array(out.slice(0, usable));
+  }
+
+  function bbox(V) {
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < V.length; i += 3)
+      for (let k = 0; k < 3; k++) { const v = V[i + k]; if (v < mn[k]) mn[k] = v; if (v > mx[k]) mx[k] = v; }
+    return { min: mn, max: mx, size: [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]] };
+  }
+
+  // triangle soup -> indexed mesh, dropping degenerate triangles
+  function weld(pos, upY) {
+    const P = new Float64Array(pos.length);
+    for (let i = 0; i < pos.length; i += 3) {
+      if (upY) { P[i] = pos[i]; P[i + 1] = -pos[i + 2]; P[i + 2] = pos[i + 1]; }
+      else { P[i] = pos[i]; P[i + 1] = pos[i + 1]; P[i + 2] = pos[i + 2]; }
+    }
+    const bb = bbox(P);
+    const diag = Math.hypot(...bb.size) || 1;
+    const tol = diag * 1e-7;
+    const map = new Map();
+    const V = [];
+    const idx = new Uint32Array(P.length / 3);
+    for (let i = 0; i < P.length / 3; i++) {
+      const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
+      const key = Math.round(x / tol) + ',' + Math.round(y / tol) + ',' + Math.round(z / tol);
+      let id = map.get(key);
+      if (id === undefined) { id = V.length / 3; map.set(key, id); V.push(x, y, z); }
+      idx[i] = id;
+    }
+    const F = [];
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t], b = idx[t + 1], c = idx[t + 2];
+      if (a !== b && b !== c && a !== c) F.push(a, b, c);
+    }
+    return { V: new Float64Array(V), F: new Uint32Array(F) };
+  }
+
+  function edgeStats(F, nv) {
+    const cnt = new Map();
+    const dir = new Map();
+    for (let t = 0; t < F.length; t += 3) {
+      for (let e = 0; e < 3; e++) {
+        const a = F[t + e], b = F[t + (e + 1) % 3];
+        const key = a < b ? a * nv + b : b * nv + a;
+        cnt.set(key, (cnt.get(key) || 0) + 1);
+        dir.set(key, [a, b]);
+      }
+    }
+    const boundary = [];
+    let nonManifold = 0;
+    for (const [k, c] of cnt) {
+      if (c === 1) boundary.push(dir.get(k));
+      else if (c > 2) nonManifold++;
+    }
+    return { closed: boundary.length === 0 && nonManifold === 0, boundary, nonManifold, edges: cnt.size };
+  }
+
+  function volumeCentroid(V, F) {
+    let vol = 0, cx = 0, cy = 0, cz = 0;
+    for (let t = 0; t < F.length; t += 3) {
+      const a = F[t] * 3, b = F[t + 1] * 3, c = F[t + 2] * 3;
+      const ax = V[a], ay = V[a + 1], az = V[a + 2];
+      const bx = V[b], by = V[b + 1], bz = V[b + 2];
+      const qx = V[c], qy = V[c + 1], qz = V[c + 2];
+      const v = (ax * (by * qz - bz * qy) - ay * (bx * qz - bz * qx) + az * (bx * qy - by * qx)) / 6;
+      vol += v; cx += v * (ax + bx + qx) / 4; cy += v * (ay + by + qy) / 4; cz += v * (az + bz + qz) / 4;
+    }
+    return { vol, c: vol !== 0 ? [cx / vol, cy / vol, cz / vol] : null };
+  }
+
+  function areaCentroid(V, F) {
+    let A = 0, cx = 0, cy = 0, cz = 0;
+    for (let t = 0; t < F.length; t += 3) {
+      const a = F[t] * 3, b = F[t + 1] * 3, c = F[t + 2] * 3;
+      const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2];
+      const wx = V[c] - V[a], wy = V[c + 1] - V[a + 1], wz = V[c + 2] - V[a + 2];
+      const ar = Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx) / 2;
+      A += ar;
+      cx += ar * (V[a] + V[b] + V[c]) / 3; cy += ar * (V[a + 1] + V[b + 1] + V[c + 1]) / 3; cz += ar * (V[a + 2] + V[b + 2] + V[c + 2]) / 3;
+    }
+    return { area: A, c: A > 0 ? [cx / A, cy / A, cz / A] : [0, 0, 0] };
+  }
+
+  function vertexNormals(V, F) {
+    const N = new Float64Array(V.length);
+    for (let t = 0; t < F.length; t += 3) {
+      const a = F[t] * 3, b = F[t + 1] * 3, c = F[t + 2] * 3;
+      const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2];
+      const wx = V[c] - V[a], wy = V[c + 1] - V[a + 1], wz = V[c + 2] - V[a + 2];
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      for (const i of [a, b, c]) { N[i] += nx; N[i + 1] += ny; N[i + 2] += nz; }
+    }
+    for (let i = 0; i < N.length; i += 3) {
+      const l = Math.hypot(N[i], N[i + 1], N[i + 2]) || 1;
+      N[i] /= l; N[i + 1] /= l; N[i + 2] /= l;
+    }
+    return N;
+  }
+
+  // Offset Mesh (create solid): offset copy along the normals, original reversed, side walls on the boundary
+  function thicken(V, F, t, boundary) {
+    const nv = V.length / 3;
+    const N = vertexNormals(V, F);
+    const V2 = new Float64Array(nv * 6);
+    V2.set(V, 0);
+    for (let i = 0; i < nv * 3; i++) V2[nv * 3 + i] = V[i] + N[i] * t;
+    const F2 = [];
+    for (let k = 0; k < F.length; k += 3) {
+      F2.push(F[k], F[k + 2], F[k + 1]);
+      F2.push(F[k] + nv, F[k + 1] + nv, F[k + 2] + nv);
+    }
+    for (const [a, b] of boundary) {
+      F2.push(a, b, b + nv);
+      F2.push(a, b + nv, a + nv);
+    }
+    const out = new Uint32Array(F2);
+    const vc = volumeCentroid(V2, out);
+    if (vc.vol < 0) for (let k = 0; k < out.length; k += 3) { const s = out[k + 1]; out[k + 1] = out[k + 2]; out[k + 2] = s; }
+    return { V: V2, F: out };
+  }
+
+  // per-floor scale factors; for an even floor count this equals the gh
+  // (Series 1, -step, n/2) + Reverse + Merge exactly
+  function profile(n, minR, curve) {
+    const s = new Float64Array(n);
+    const kmax = Math.floor((n - 1) / 2);
+    for (let i = 0; i < n; i++) {
+      if (kmax === 0) { s[i] = 1; continue; }
+      const u = Math.min(i, n - 1 - i) / kmax;
+      s[i] = curve === 'smooth' ? 1 - (1 - minR) * (1 - Math.cos(Math.PI * u)) / 2 : 1 - (1 - minR) * u;
+    }
+    return s;
+  }
+
+  function floors(p) {
+    const s = profile(p.count, p.minR, p.curve);
+    const out = [];
+    for (let i = 0; i < p.count; i++) out.push({ i, z: i * p.pitch, s: s[i], th: i * p.stepDeg * Math.PI / 180 });
+    return out;
+  }
+
+  // world position of a base vertex on floor f (scale XY then rotate about the vertical axis through c)
+  function xf(x, y, z, c, f) {
+    const dx = (x - c[0]) * f.s, dy = (y - c[1]) * f.s;
+    const cs = Math.cos(f.th), sn = Math.sin(f.th);
+    return [c[0] + cs * dx - sn * dy, c[1] + sn * dx + cs * dy, z + f.z];
+  }
+
+  function exportSTL(V, F, c, fl, k) {
+    const nt = F.length / 3;
+    const buf = new ArrayBuffer(84 + nt * fl.length * 50);
+    const dv = new DataView(buf);
+    const hdr = 'Unit Tower generator (gh logic) ' + fl.length + ' floors';
+    for (let i = 0; i < Math.min(80, hdr.length); i++) dv.setUint8(i, hdr.charCodeAt(i) & 127);
+    dv.setUint32(80, nt * fl.length, true);
+    let o = 84;
+    const nv = V.length / 3;
+    const W = new Float64Array(nv * 3);
+    for (const f of fl) {
+      for (let v = 0; v < nv; v++) {
+        const q = xf(V[v * 3], V[v * 3 + 1], V[v * 3 + 2], c, f);
+        W[v * 3] = q[0] * k; W[v * 3 + 1] = q[1] * k; W[v * 3 + 2] = q[2] * k;
+      }
+      for (let t = 0; t < F.length; t += 3) {
+        const a = F[t] * 3, b = F[t + 1] * 3, d = F[t + 2] * 3;
+        const ux = W[b] - W[a], uy = W[b + 1] - W[a + 1], uz = W[b + 2] - W[a + 2];
+        const wx = W[d] - W[a], wy = W[d + 1] - W[a + 1], wz = W[d + 2] - W[a + 2];
+        let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+        const l = Math.hypot(nx, ny, nz) || 1;
+        dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true);
+        o += 12;
+        for (const i of [a, b, d]) {
+          dv.setFloat32(o, W[i], true); dv.setFloat32(o + 4, W[i + 1], true); dv.setFloat32(o + 8, W[i + 2], true);
+          o += 12;
+        }
+        o += 2;
+      }
+    }
+    return buf;
+  }
+
+  function exportOBJ(V, F, c, fl, k) {
+    const nv = V.length / 3;
+    const parts = ['# Unit Tower generator (gh logic), ' + fl.length + ' floors\n'];
+    let base = 0;
+    for (const f of fl) {
+      const L = ['o floor_' + String(f.i + 1).padStart(3, '0')];
+      for (let v = 0; v < nv; v++) {
+        const q = xf(V[v * 3], V[v * 3 + 1], V[v * 3 + 2], c, f);
+        L.push('v ' + +(q[0] * k).toFixed(6) + ' ' + +(q[1] * k).toFixed(6) + ' ' + +(q[2] * k).toFixed(6));
+      }
+      for (let t = 0; t < F.length; t += 3) L.push('f ' + (F[t] + 1 + base) + ' ' + (F[t + 1] + 1 + base) + ' ' + (F[t + 2] + 1 + base));
+      base += nv;
+      parts.push(L.join('\n') + '\n');
+    }
+    return parts.join('');
+  }
+
+  // rhino: an initialised rhino3dm module
+  function export3DM(rhino, V, F, c, fl, k, unitName) {
+    const doc = new rhino.File3dm();
+    try { doc.settings().modelUnitSystem = rhino.UnitSystem[unitName]; } catch (e) {}
+    let layerIndex = 0;
+    try {
+      const layer = new rhino.Layer();
+      layer.name = 'Unit Tower';
+      doc.layers().add(layer);
+    } catch (e) {}
+    const nv = V.length / 3;
+    for (const f of fl) {
+      const mesh = new rhino.Mesh();
+      const vs = mesh.vertices(), fs = mesh.faces();
+      for (let v = 0; v < nv; v++) {
+        const q = xf(V[v * 3], V[v * 3 + 1], V[v * 3 + 2], c, f);
+        vs.add(q[0] * k, q[1] * k, q[2] * k);
+      }
+      for (let t = 0; t < F.length; t += 3) fs.addTriFace(F[t], F[t + 1], F[t + 2]);
+      try { mesh.normals().computeNormals(); mesh.compact(); } catch (e) {}
+      const att = new rhino.ObjectAttributes();
+      att.layerIndex = layerIndex;
+      att.name = 'F' + String(f.i + 1).padStart(2, '0');
+      doc.objects().add(mesh, att);
+    }
+    return doc.toByteArray();
+  }
+
+  // sample: rounded-rectangle floor plate, open surface (the gh thickens it by 0.1)
+  function samplePlate(w = 30, d = 18, r = 4, seg = 10) {
+    const pts = [];
+    const cs = [[w / 2 - r, d / 2 - r, 0], [-w / 2 + r, d / 2 - r, 90], [-w / 2 + r, -d / 2 + r, 180], [w / 2 - r, -d / 2 + r, 270]];
+    for (const [cx, cy, a0] of cs)
+      for (let j = 0; j <= seg; j++) {
+        const a = (a0 + 90 * j / seg) * Math.PI / 180;
+        pts.push(cx + r * Math.cos(a), cy + r * Math.sin(a));
+      }
+    const m = pts.length / 2;
+    const tri = [];
+    for (let i = 0; i < m; i++) {
+      const j = (i + 1) % m;
+      tri.push(0, 0, 0, pts[i * 2], pts[i * 2 + 1], 0, pts[j * 2], pts[j * 2 + 1], 0);
+    }
+    return new Float32Array(tri);
+  }
+
+  return { parseSTL, bbox, weld, edgeStats, volumeCentroid, areaCentroid, vertexNormals, thicken, profile, floors, xf, exportSTL, exportOBJ, export3DM, samplePlate };
+})();
+if (typeof module !== 'undefined') module.exports = Core;
+// ===================== CORE-END =====================
+</script>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const GH = { count: 40, gap: 3.6, minR: 0.62, curve: 'linear', step: 22.5, thick: 0.1, pivot: 'centroid' };
+const S = Object.assign({ unit: 1, upY: false }, GH);
+let raw = null, fileName = '示例楼板', baseMesh = null, geo = null;
+
+// ---------- geometry state ----------
+function rebuild() {
+  baseMesh = Core.weld(raw, S.upY);
+  const es = Core.edgeStats(baseMesh.F, baseMesh.V.length / 3);
+  let V = baseMesh.V, F = baseMesh.F, thick = false;
+  if (!es.closed && es.boundary.length && es.nonManifold === 0) {
+    const t = S.thick / S.unit;
+    const r = Core.thicken(V, F, t, es.boundary);
+    V = r.V; F = r.F; thick = true;
+  }
+  const bb = Core.bbox(V);
+  let c;
+  const vc = es.closed || thick ? Core.volumeCentroid(V, F) : { c: null };
+  const bc = [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2];
+  if (S.pivot === 'bbox') c = bc;
+  else c = vc.c && Math.abs(vc.vol) > 1e-12 ? vc.c : Core.areaCentroid(V, F).c;
+  geo = { V, F, bb, c, es, thick, h: bb.size[2] };
+  uploadMesh();
+  updateInfo();
+  update(true);
+}
+
+function params() {
+  return { count: S.count, pitch: geo.h + S.gap / S.unit, minR: S.minR, curve: S.curve, stepDeg: S.step };
+}
+
+// ---------- UI ----------
+const fmt = (v, d = 2) => (+v.toFixed(d)).toLocaleString('zh-CN', { maximumFractionDigits: d });
+function updateInfo() {
+  const u = S.unit, s = geo.bb.size;
+  const es = geo.es;
+  const state = es.closed ? '闭合实体 · 直接使用'
+    : es.nonManifold ? '<span class="warn">非流形网格 · 无法加厚，按原样使用</span>'
+    : '开放面 · 已按厚度加厚成实体';
+  $('info').innerHTML =
+    `${fmt(s[0] * u)} × ${fmt(s[1] * u)} × ${fmt(s[2] * u, 3)} m · ${(baseMesh.F.length / 3).toLocaleString()} 面<br>` +
+    `<span class="dot"></span>${state}`;
+  $('secThick').classList.toggle('hidden', !geo.thick);
+  $('fname').textContent = fileName.length > 22 ? fileName.slice(0, 20) + '…' : fileName;
+}
+
+function update(refit) {
+  const p = params();
+  const fl = Core.floors(p);
+  const u = S.unit;
+  const H = ((S.count - 1) * p.pitch + geo.h) * u;
+  $('readStack').textContent = `层距 ${fmt(geo.h * u, 3)} + ${fmt(S.gap, 2)} = ${fmt(p.pitch * u, 3)} m · 总高 ${fmt(H, 1)} m`;
+  const kmax = Math.floor((S.count - 1) / 2);
+  const mids = S.count % 2 === 0 && S.count > 1 ? `第 ${S.count / 2}、${S.count / 2 + 1} 层` : `第 ${kmax + 1} 层`;
+  $('readWaist').textContent = S.count < 3 ? '层数太少，不收腰' : `最细处 ${mids} · 比例 ${fmt(S.minR, 2)}`;
+  $('readTwist').textContent = `顶层累计 ${fmt((S.count - 1) * S.step, 1)}° · 约 ${fmt(Math.abs((S.count - 1) * S.step) / 360, 2)} 圈`;
+  const tris = geo.F.length / 3 * S.count;
+  const mb = (84 + tris * 50) / 1048576;
+  $('expInfo').textContent = `${(tris / 1e4).toFixed(tris > 1e5 ? 0 : 1)} 万面`;
+  $('readExport').innerHTML = (mb > 300 ? `<span class="warn">STL 约 ${fmt(mb, 0)} MB，面数较多，导出可能较慢。</span><br>` : mb < 1 ? `STL 约 ${fmt(mb * 1024, 0)} KB。` : `STL 约 ${fmt(mb, 1)} MB。`) +
+    '导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。';
+  $('hudA').textContent = `${S.count} 层 · 总高 ${fmt(H, 1)} m · 扭转 ${fmt((S.count - 1) * S.step, 1)}°`;
+  R.setFloors(fl, geo, p);
+  if (refit) R.fit();
+  R.draw();
+}
+
+function bindSlider(key, nId, rId, opts = {}) {
+  const n = $(nId), r = $(rId);
+  const paint = () => { const p = (r.value - r.min) / (r.max - r.min) * 100; r.style.setProperty('--p', Math.max(0, Math.min(100, p)) + '%'); };
+  const set = (v, from) => {
+    v = +v; if (!isFinite(v)) return;
+    if (opts.int) v = Math.round(v);
+    if (opts.lo !== undefined) v = Math.max(opts.lo, v);
+    if (opts.hi !== undefined) v = Math.min(opts.hi, v);
+    S[key] = v;
+    if (from !== n) n.value = v;
+    if (from !== r) r.value = v;
+    paint();
+    opts.geom ? rebuild() : update(false);
+  };
+  r.addEventListener('input', () => set(r.value, r));
+  n.addEventListener('change', () => set(n.value, n));
+  return { sync() { n.value = S[key]; r.value = S[key]; paint(); } };
+}
+const sliders = [
+  bindSlider('thick', 'nThick', 'rThick', { lo: 0.001, hi: 50, geom: true }),
+  bindSlider('count', 'nCount', 'rCount', { int: true, lo: 1, hi: 1000 }),
+  bindSlider('gap', 'nGap', 'rGap', { lo: 0, hi: 1000 }),
+  bindSlider('minR', 'nMin', 'rMin', { lo: 0.01, hi: 5 }),
+  bindSlider('step', 'nRot', 'rRot', { lo: -360, hi: 360 }),
+];
+function bindSeg(id, key, conv, geom) {
+  const el = $(id);
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S[key] = conv(b.dataset.v);
+    syncSeg(id, key);
+    if (geom) rebuild(); else update(false);
+  });
+}
+function syncSeg(id, key) {
+  for (const b of $(id).querySelectorAll('button')) b.classList.toggle('on', String(S[key]) === String(conv[id](b.dataset.v)));
+}
+const conv = { segUnit: Number, segUp: v => v === 'y', segCurve: v => v, segPivot: v => v };
+bindSeg('segUnit', 'unit', Number, true);
+bindSeg('segUp', 'upY', v => v === 'y', true);
+bindSeg('segCurve', 'curve', v => v, false);
+bindSeg('segPivot', 'pivot', v => v, true);
+function syncAll() {
+  sliders.forEach(s => s.sync());
+  for (const [id, key] of [['segUnit', 'unit'], ['segUp', 'upY'], ['segCurve', 'curve'], ['segPivot', 'pivot']]) syncSeg(id, key);
+}
+
+// a unit taller than 2.5 m is already a whole storey: stack it with no extra clear height
+function defaultGap(pos, unit, upY) {
+  const bb = Core.bbox(pos);
+  const h = (upY ? bb.size[1] : bb.size[2]) * unit;
+  return h > 2.5 ? 0 : GH.gap;
+}
+function guessUnit(pos) {
+  const bb = Core.bbox(pos);
+  const m = Math.max(...bb.size);
+  return m >= 1000 ? 0.001 : 1;
+}
+function loadBuffer(buf, name, quiet) {
+  let pos;
+  try { pos = Core.parseSTL(buf); } catch (e) { pos = null; }
+  if (!pos || pos.length < 9) { toast('没读到三角面，请确认是 STL 文件'); return; }
+  raw = pos; fileName = name;
+  S.unit = guessUnit(pos);
+  S.gap = defaultGap(pos, S.unit, S.upY);
+  syncAll();
+  rebuild();
+  if (!quiet) toast(`已载入 ${name} · 单位 ${S.unit === 0.001 ? 'mm' : 'm'}` + (S.gap === 0 ? ' · 单体为整层高，净高设为 0' : '') + '，可在左侧修改');
+}
+function loadSample() {
+  raw = Core.samplePlate(); fileName = '示例楼板'; S.unit = 1; S.upY = false;
+  syncAll(); rebuild();
+}
+const drop = $('drop'), file = $('file');
+drop.addEventListener('click', () => file.click());
+file.addEventListener('change', () => { const f = file.files[0]; if (f) f.arrayBuffer().then(b => loadBuffer(b, f.name)); file.value = ''; });
+for (const ev of ['dragenter', 'dragover']) document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); });
+for (const ev of ['dragleave', 'drop']) document.addEventListener(ev, e => { e.preventDefault(); if (ev === 'drop' || !e.relatedTarget) drop.classList.remove('over'); });
+document.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) f.arrayBuffer().then(b => loadBuffer(b, f.name)); });
+$('btnSample').onclick = loadSample;
+// the bundled sample unit sits next to this page; opened from disk (no server) it falls back to the plate
+async function loadUnit(quiet) {
+  try {
+    const r = await fetch('sample-unit.stl');
+    if (!r.ok) throw new Error(r.status);
+    loadBuffer(await r.arrayBuffer(), '示例单体.stl', quiet);
+  } catch (e) { loadSample(); if (!quiet) toast('示例单体需要在网页上打开，已载入示例楼板'); }
+}
+$('btnUnit').onclick = () => loadUnit(false);
+$('btnReset').onclick = () => { Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY); syncAll(); rebuild(); };
+$('btnFit').onclick = () => { R.fit(); R.draw(); };
+
+let toastT;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+
+// ---------- export ----------
+const unitName = () => S.unit === 0.001 ? 'Millimeters' : S.unit === 0.01 ? 'Centimeters' : 'Meters';
+const baseName = () => (fileName.replace(/\.stl$/i, '') || 'unit') + `_tower_${S.count}F`;
+function save(data, name, type) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+const busy = (btn, f) => async () => {
+  const old = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  await new Promise(r => setTimeout(r, 30));
+  try { await f(); } catch (e) { console.error(e); toast('导出失败：' + (e.message || e)); }
+  btn.disabled = false; btn.textContent = old;
+};
+$('exSTL').onclick = busy($('exSTL'), () => save(Core.exportSTL(geo.V, geo.F, geo.c, Core.floors(params()), 1), baseName() + '.stl', 'model/stl'));
+$('exOBJ').onclick = busy($('exOBJ'), () => save(Core.exportOBJ(geo.V, geo.F, geo.c, Core.floors(params()), 1), baseName() + '.obj', 'text/plain'));
+let rhinoP = null;
+const RHINO = 'https://cdn.jsdelivr.net/npm/rhino3dm@8.4.0/';
+function loadRhino() {
+  if (rhinoP) return rhinoP;
+  rhinoP = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = RHINO + 'rhino3dm.js';
+    s.onload = () => rhino3dm({ locateFile: f => RHINO + f }).then(res, rej);
+    s.onerror = () => rej(new Error('无法加载 rhino3dm（需要联网）'));
+    document.head.appendChild(s);
+  }).catch(e => { rhinoP = null; throw e; });
+  return rhinoP;
+}
+$('ex3DM').onclick = busy($('ex3DM'), async () => {
+  toast('正在加载 Rhino 库…');
+  const rhino = await loadRhino();
+  const bytes = Core.export3DM(rhino, geo.V, geo.F, geo.c, Core.floors(params()), 1, unitName());
+  save(bytes, baseName() + '.3dm', 'application/octet-stream');
+});
+
+// ---------- WebGL renderer ----------
+const R = (() => {
+  const cv = $('gl');
+  const gl = cv.getContext('webgl2', { antialias: true });
+  if (!gl) { $('err').style.display = 'flex'; $('err').textContent = '浏览器不支持 WebGL2，无法预览（导出仍可用）'; return { setFloors() {}, fit() {}, draw() {} }; }
+  const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
+  const meshP = prog(`#version 300 es
+    layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec4 aI;
+    uniform mat4 uVP; uniform float uN;
+    out vec3 vN; out vec3 vW; out float vT;
+    void main(){
+      float c=cos(aI.y), s=sin(aI.y);
+      vec2 xy=aP.xy*aI.x; xy=vec2(c*xy.x-s*xy.y, s*xy.x+c*xy.y);
+      vec3 w=vec3(xy, aP.z+aI.z);
+      vec2 nxy=aN.xy/max(aI.x,1e-4); nxy=vec2(c*nxy.x-s*nxy.y, s*nxy.x+c*nxy.y);
+      vN=normalize(vec3(nxy,aN.z)); vW=w; vT=aI.w/max(uN-1.0,1.0);
+      gl_Position=uVP*vec4(w,1.0);
+    }`, `#version 300 es
+    precision highp float;
+    in vec3 vN; in vec3 vW; in float vT; uniform vec3 uEye; out vec4 o;
+    void main(){
+      vec3 n=normalize(vN); vec3 v=normalize(uEye-vW);
+      if(dot(n,v)<0.0) n=-n;
+      vec3 L=normalize(vec3(0.45,-0.35,0.82));
+      float d=max(dot(n,L),0.0);
+      float hemi=0.5+0.5*n.z;
+      float rim=pow(1.0-max(dot(n,v),0.0),3.0);
+      vec3 base=mix(vec3(0.42,0.42,0.44), vec3(0.96,0.96,0.97), vT);
+      vec3 col=base*(0.22+0.18*hemi+0.62*d)+rim*0.18;
+      o=vec4(pow(col,vec3(0.95)),1.0);
+    }`);
+  const lineP = prog(`#version 300 es
+    layout(location=0) in vec3 aP; uniform mat4 uVP; void main(){ gl_Position=uVP*vec4(aP,1.0); }`,
+    `#version 300 es
+    precision highp float; uniform vec4 uC; out vec4 o; void main(){ o=uC; }`);
+  const vao = gl.createVertexArray(), vbo = gl.createBuffer(), ibo = gl.createBuffer();
+  const lvao = gl.createVertexArray(), lvbo = gl.createBuffer();
+  let nVerts = 0, nInst = 0, gridN = 0, axisStart = 0;
+  let cam = { az: -0.75, el: 0.42, dist: 100, tgt: [0, 0, 0] };
+  let ext = { r: 10, h: 10, z0: 0 };
+
+  function upload(g) {
+    const { V, F, c } = g;
+    const nt = F.length / 3;
+    const data = new Float32Array(nt * 18);
+    for (let t = 0; t < nt; t++) {
+      const a = F[t * 3] * 3, b = F[t * 3 + 1] * 3, d = F[t * 3 + 2] * 3;
+      const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2];
+      const wx = V[d] - V[a], wy = V[d + 1] - V[a + 1], wz = V[d + 2] - V[a + 2];
+      let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+      [a, b, d].forEach((i, k) => {
+        const o = t * 18 + k * 6;
+        data[o] = V[i] - c[0]; data[o + 1] = V[i + 1] - c[1]; data[o + 2] = V[i + 2] - c[2];
+        data[o + 3] = nx; data[o + 4] = ny; data[o + 5] = nz;
+      });
+    }
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
+    gl.bindBuffer(gl.ARRAY_BUFFER, ibo);
+    gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 16, 0); gl.vertexAttribDivisor(2, 1);
+    gl.bindVertexArray(null);
+    nVerts = nt * 3;
+  }
+
+  function setFloors(fl, g, p) {
+    const inst = new Float32Array(fl.length * 4);
+    fl.forEach((f, i) => { inst[i * 4] = f.s; inst[i * 4 + 1] = f.th; inst[i * 4 + 2] = f.z; inst[i * 4 + 3] = i; });
+    gl.bindBuffer(gl.ARRAY_BUFFER, ibo);
+    gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+    nInst = fl.length;
+    // extents relative to the pivot
+    const { V, c, bb } = g;
+    let r = 0;
+    for (let i = 0; i < V.length; i += 3) r = Math.max(r, Math.hypot(V[i] - c[0], V[i + 1] - c[1]));
+    const smax = Math.max(1, ...fl.map(f => f.s));
+    const z0 = bb.min[2] - c[2], z1 = bb.max[2] - c[2] + (fl.length - 1) * p.pitch;
+    ext = { r: r * smax, h: z1 - z0, z0, z1 };
+    buildLines();
+  }
+
+  function buildLines() {
+    const L = [];
+    const step = niceStep(ext.r * 2.4 / 12);
+    const half = Math.ceil(ext.r * 1.6 / step) * step;
+    const z = ext.z0;
+    for (let x = -half; x <= half + 1e-9; x += step) { L.push(x, -half, z, x, half, z); L.push(-half, x, z, half, x, z); }
+    gridN = L.length / 3;
+    axisStart = gridN;
+    L.push(0, 0, ext.z0 - ext.h * 0.03, 0, 0, ext.z1 + ext.h * 0.05);
+    gl.bindVertexArray(lvao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, lvbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(L), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+    gl.bindVertexArray(null);
+  }
+  function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const m = x / p; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p; }
+
+  function fit() {
+    cam.tgt = [0, 0, ext.z0 + ext.h * 0.5];
+    const size = Math.max(ext.h, ext.r * 2.2);
+    const asp = cv.clientWidth / Math.max(1, cv.clientHeight);
+    cam.dist = size / (2 * Math.tan(17.5 * Math.PI / 180)) / Math.min(1, asp) * 1.42;
+    cam.az = -0.75; cam.el = 0.3;
+  }
+
+  function mats() {
+    const asp = cv.width / Math.max(1, cv.height);
+    const f = 1 / Math.tan(17.5 * Math.PI / 180);
+    const near = cam.dist * 0.01, far = cam.dist * 20;
+    const P = [f / asp, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) / (near - far), -1, 0, 0, 2 * far * near / (near - far), 0];
+    const ce = Math.cos(cam.el);
+    const eye = [cam.tgt[0] + cam.dist * ce * Math.cos(cam.az), cam.tgt[1] + cam.dist * ce * Math.sin(cam.az), cam.tgt[2] + cam.dist * Math.sin(cam.el)];
+    const zA = norm(sub(eye, cam.tgt)), xA = norm(cross([0, 0, 1], zA)), yA = cross(zA, xA);
+    const Vw = [xA[0], yA[0], zA[0], 0, xA[1], yA[1], zA[1], 0, xA[2], yA[2], zA[2], 0, -dot(xA, eye), -dot(yA, eye), -dot(zA, eye), 1];
+    return { VP: mul(P, Vw), eye, xA, yA };
+  }
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = a => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  function mul(a, b) { const o = new Array(16).fill(0); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k]; return o; }
+
+  let raf = 0;
+  function draw() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
+  function render() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0.012, 0.012, 0.012, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    const m = mats();
+    gl.useProgram(lineP);
+    gl.uniformMatrix4fv(gl.getUniformLocation(lineP, 'uVP'), false, m.VP);
+    gl.bindVertexArray(lvao);
+    gl.uniform4f(gl.getUniformLocation(lineP, 'uC'), 0.17, 0.17, 0.18, 1);
+    gl.drawArrays(gl.LINES, 0, gridN);
+    gl.useProgram(meshP);
+    gl.uniformMatrix4fv(gl.getUniformLocation(meshP, 'uVP'), false, m.VP);
+    gl.uniform3fv(gl.getUniformLocation(meshP, 'uEye'), m.eye);
+    gl.uniform1f(gl.getUniformLocation(meshP, 'uN'), nInst);
+    gl.bindVertexArray(vao);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, nVerts, nInst);
+    gl.useProgram(lineP);
+    gl.bindVertexArray(lvao);
+    gl.disable(gl.DEPTH_TEST);
+    gl.uniform4f(gl.getUniformLocation(lineP, 'uC'), 1.0, 0.416, 0.239, 0.55);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.LINES, axisStart, 2);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(null);
+  }
+
+  // orbit / pan / zoom
+  const ptrs = new Map(); let last = null, pinch = 0, panMode = false;
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); panMode = e.button === 2 || e.shiftKey; last = [e.clientX, e.clientY]; if (ptrs.size === 2) pinch = pdist(); });
+  cv.addEventListener('pointermove', e => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (ptrs.size === 2) {
+      const d = pdist(); if (pinch) cam.dist *= pinch / d; pinch = d;
+      const c = centre(); if (last) pan(c[0] - last[0], c[1] - last[1]); last = c; draw(); return;
+    }
+    const dx = e.clientX - last[0], dy = e.clientY - last[1]; last = [e.clientX, e.clientY];
+    if (panMode) pan(dx, dy);
+    else { cam.az -= dx * 0.006; cam.el = Math.max(-1.45, Math.min(1.45, cam.el + dy * 0.006)); }
+    draw();
+  });
+  const up = e => { ptrs.delete(e.pointerId); pinch = 0; last = ptrs.size ? centre() : null; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  cv.addEventListener('wheel', e => { e.preventDefault(); cam.dist *= Math.exp(e.deltaY * 0.0012); draw(); }, { passive: false });
+  function pdist() { const [a, b] = [...ptrs.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]) || 1; }
+  function centre() { const [a, b] = [...ptrs.values()]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; }
+  function pan(dx, dy) {
+    const m = mats(); const k = cam.dist * 2 * Math.tan(17.5 * Math.PI / 180) / cv.clientHeight;
+    for (let i = 0; i < 3; i++) cam.tgt[i] += (-dx * m.xA[i] + dy * m.yA[i]) * k;
+  }
+  new ResizeObserver(draw).observe(cv);
+  return { upload, setFloors, fit, draw };
+})();
+function uploadMesh() { R.upload(geo); }
+
+window.__app = { S, Core, get geo() { return geo; }, loadBuffer, rebuild };
+loadSample();
+loadUnit(true);
+})();
+</script>
+</body>
+</html>
