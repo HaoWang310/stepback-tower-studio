@@ -123,6 +123,22 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       <div class="read" id="readTwist"></div>
     </div>
 
+    <div class="sec" id="secPrint">
+      <h2>打印分件 <span>Bambu Lab A1 · 256 mm</span></h2>
+      <div class="row"><label>比例</label>
+        <div class="seg" id="segScale"><button data-v="300">1:300</button><button data-v="500" class="on">1:500</button><button data-v="750">1:750</button><button data-v="1000">1:1000</button></div></div>
+      <div class="row"><label>打印壁厚</label><span><input class="num" id="nWall" type="number" step="0.1"><span class="unit">mm</span></span></div>
+      <input type="range" id="rWall" min="0.4" max="3" step="0.1">
+      <div class="row"><label>层号</label>
+        <div class="seg" id="segLabel"><button data-v="1" class="on">压凸字</button><button data-v="0">不压</button></div></div>
+      <div class="read" id="readPrint"></div>
+      <div class="row"><label>预览第</label><span><input class="num" id="nPrev" type="number" step="1" value="1" style="width:40px"><span class="unit">层分件</span></span></div>
+      <div class="btns" style="grid-template-columns:1fr 1fr;margin-top:12px">
+        <button class="btn" id="btnPrev">预览分件</button>
+        <button class="btn primary" id="btnPrint">导出 ZIP</button>
+      </div>
+    </div>
+
     <div class="sec">
       <h2>导出 <span id="expInfo"></span></h2>
       <div class="btns">
@@ -552,7 +568,236 @@ const Core = (() => {
     return new Float32Array(tri);
   }
 
-  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, floors, xf, exportSTL, exportOBJ, export3DM, samplePlate };
+  // ---------------- print parts (cut each floor in half, constant wall, labels) ----------------
+  // split an open surface at z = zc into two triangle soups, sharing the exact cut points
+  function cutZ(V, F, zc) {
+    const nv = V.length / 3;
+    const bb = bbox(V);
+    const eps = (Math.hypot(...bb.size) || 1) * 1e-7;
+    const d = new Float64Array(nv);
+    for (let i = 0; i < nv; i++) { const v = V[i * 3 + 2] - zc; d[i] = Math.abs(v) < eps ? eps : v; }
+    const P = i => [V[i * 3], V[i * 3 + 1], V[i * 3 + 2]];
+    const cutP = (a, b) => {
+      const lo = Math.min(a, b), hi = Math.max(a, b), t = d[lo] / (d[lo] - d[hi]);
+      return [V[lo * 3] + (V[hi * 3] - V[lo * 3]) * t, V[lo * 3 + 1] + (V[hi * 3 + 1] - V[lo * 3 + 1]) * t, zc];
+    };
+    const out = [[], []];
+    const tri = (h, p, q, r) => out[h].push(...p, ...q, ...r);
+    for (let t = 0; t < F.length; t += 3) {
+      const ids = [F[t], F[t + 1], F[t + 2]];
+      const s = ids.map(i => d[i] > 0 ? 1 : 0);
+      if (s[0] === s[1] && s[1] === s[2]) { tri(s[0], P(ids[0]), P(ids[1]), P(ids[2])); continue; }
+      let k = s[0] !== s[1] && s[0] !== s[2] ? 0 : s[1] !== s[0] && s[1] !== s[2] ? 1 : 2;
+      const p = ids[k], q = ids[(k + 1) % 3], r = ids[(k + 2) % 3];
+      const P1 = cutP(p, q), P2 = cutP(p, r);
+      tri(s[k], P(p), P1, P2);
+      tri(1 - s[k], P1, P(q), P(r));
+      tri(1 - s[k], P1, P(r), P2);
+    }
+    return { lo: weld(new Float32Array(out[0]), false), hi: weld(new Float32Array(out[1]), false) };
+  }
+
+  function boxTris(x0, y0, z0, x1, y1, z1, V, F) {
+    const b = V.length / 3;
+    V.push(x0, y0, z0, x1, y0, z0, x1, y1, z0, x0, y1, z0, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);
+    const q = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]];
+    for (const [i, j, k] of q) F.push(b + i, b + j, b + k);
+  }
+  const SEG = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g' };
+  // 7-segment text as raised boxes; returns rectangles in (u,v) text space
+  function glyphRects(text, W, H, bar, gap) {
+    const R = [];
+    let u = 0;
+    for (const ch of text) {
+      const segs = SEG[ch] || '';
+      const S = {
+        a: [0, H - bar, W, H], d: [0, 0, W, bar], g: [0, (H - bar) / 2, W, (H + bar) / 2],
+        f: [0, H / 2 - bar / 2, bar, H], b: [W - bar, H / 2 - bar / 2, W, H], e: [0, 0, bar, H / 2 + bar / 2], c: [W - bar, 0, W, H / 2 + bar / 2],
+      };
+      for (const s of segs) { const r = S[s]; R.push([u + r[0], r[1], u + r[2], r[3]]); }
+      u += W + gap;
+    }
+    return { R, width: u - gap, height: H };
+  }
+
+  // find a flat, upward-facing interior floor (the trough bottom) big enough for the label
+  function findLabelSpot(V, F, wall, wTxt, hTxt) {
+    const cand = [];
+    const hist = new Map();
+    for (let t = 0; t < F.length; t += 3) {
+      const a = F[t] * 3, b = F[t + 1] * 3, c = F[t + 2] * 3;
+      const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2];
+      const wx = V[c] - V[a], wy = V[c + 1] - V[a + 1], wz = V[c + 2] - V[a + 2];
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      const l = Math.hypot(nx, ny, nz); if (!l || nz / l < 0.985) continue;
+      const z = (V[a + 2] + V[b + 2] + V[c + 2]) / 3;
+      if (z < wall * 0.3) continue;
+      cand.push(t, z);
+      const key = Math.round(z / (wall * 0.25));
+      hist.set(key, (hist.get(key) || 0) + l / 2);
+    }
+    if (!cand.length) return null;
+    let bestKey = null, bestA = 0;
+    for (const [k, A] of hist) if (A > bestA || (A === bestA && k < bestKey)) { bestA = A; bestKey = k; }
+    const zf = bestKey * wall * 0.25;
+    const bb = bbox(V);
+    const cell = 0.5;
+    const nx = Math.ceil(bb.size[0] / cell) + 1, ny = Math.ceil(bb.size[1] / cell) + 1;
+    const G = new Uint8Array(nx * ny), Z = new Float32Array(nx * ny);
+    for (let i = 0; i < cand.length; i += 2) {
+      const t = cand[i], z = cand[i + 1];
+      if (Math.abs(z - zf) > wall * 0.3) continue;
+      const p = [0, 1, 2].map(k => [V[F[t + k] * 3], V[F[t + k] * 3 + 1]]);
+      const x0 = Math.min(p[0][0], p[1][0], p[2][0]), x1 = Math.max(p[0][0], p[1][0], p[2][0]);
+      const y0 = Math.min(p[0][1], p[1][1], p[2][1]), y1 = Math.max(p[0][1], p[1][1], p[2][1]);
+      const i0 = Math.max(0, Math.floor((x0 - bb.min[0]) / cell)), i1 = Math.min(nx - 1, Math.ceil((x1 - bb.min[0]) / cell));
+      const j0 = Math.max(0, Math.floor((y0 - bb.min[1]) / cell)), j1 = Math.min(ny - 1, Math.ceil((y1 - bb.min[1]) / cell));
+      const area = (p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) - (p[2][0] - p[0][0]) * (p[1][1] - p[0][1]);
+      for (let j = j0; j <= j1; j++) for (let i2 = i0; i2 <= i1; i2++) {
+        const x = bb.min[0] + (i2 + 0.5) * cell, y = bb.min[1] + (j + 0.5) * cell;
+        const w0 = (p[1][0] - x) * (p[2][1] - y) - (p[2][0] - x) * (p[1][1] - y);
+        const w1 = (p[2][0] - x) * (p[0][1] - y) - (p[0][0] - x) * (p[2][1] - y);
+        const w2 = area - w0 - w1;
+        if (area > 0 ? (w0 >= 0 && w1 >= 0 && w2 >= 0) : (w0 <= 0 && w1 <= 0 && w2 <= 0)) { G[j * nx + i2] = 1; Z[j * nx + i2] = z; }
+      }
+    }
+    const I = new Int32Array((nx + 1) * (ny + 1));
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++)
+      I[(j + 1) * (nx + 1) + i + 1] = G[j * nx + i] + I[j * (nx + 1) + i + 1] + I[(j + 1) * (nx + 1) + i] - I[j * (nx + 1) + i];
+    const full = (i, j, w, h) => I[(j + h) * (nx + 1) + i + w] - I[j * (nx + 1) + i + w] - I[(j + h) * (nx + 1) + i] + I[j * (nx + 1) + i] === w * h;
+    const cx = (bb.min[0] + bb.max[0]) / 2, cy = (bb.min[1] + bb.max[1]) / 2;
+    let best = null;
+    for (const along of ['x', 'y']) {
+      const w = Math.ceil((along === 'x' ? wTxt : hTxt) / cell), h = Math.ceil((along === 'x' ? hTxt : wTxt) / cell);
+      for (let j = 0; j + h <= ny; j++) for (let i = 0; i + w <= nx; i++) {
+        if (!full(i, j, w, h)) continue;
+        const x = bb.min[0] + (i + w / 2) * cell, y = bb.min[1] + (j + h / 2) * cell;
+        const score = Math.hypot(x - cx, y - cy);
+        if (!best || score > best.score) best = { score, x, y, along, z: Z[(j + (h >> 1)) * nx + i + (w >> 1)] };
+      }
+    }
+    return best;
+  }
+
+  function addLabel(V, F, text, wall, size) {
+    for (const sc of [1, 0.75, 0.55]) {
+      const H = size * sc, W = H * 0.6, bar = Math.max(0.6, H * 0.16), gap = H * 0.2, m = 1;
+      const g = glyphRects(text, W, H, bar, gap);
+      const spot = findLabelSpot(V, F, wall, g.width + 2 * m, g.height + 2 * m);
+      if (!spot) continue;
+      const Vn = Array.from(V), Fn = Array.from(F);
+      const z0 = spot.z - 0.3, z1 = spot.z + 0.6;
+      for (const [u0, v0, u1, v1] of g.R) {
+        const uc = u0 - g.width / 2, uc1 = u1 - g.width / 2, vc = v0 - g.height / 2, vc1 = v1 - g.height / 2;
+        if (spot.along === 'x') boxTris(spot.x + uc, spot.y + vc, z0, spot.x + uc1, spot.y + vc1, z1, Vn, Fn);
+        else boxTris(spot.x - vc1, spot.y + uc, z0, spot.x - vc, spot.y + uc1, z1, Vn, Fn);
+      }
+      return { V: new Float64Array(Vn), F: new Uint32Array(Fn), placed: true, size: H };
+    }
+    return { V, F, placed: false };
+  }
+
+  // one floor -> two printable halves in mm, flat side down, centred on the origin
+  // halves: result of cutZ on the unit surface (file units); k = mm per file unit
+  function printPieces(halves, c, s, k, wallMM, floorNo, labels, labelMM) {
+    const res = {};
+    for (const [key, part, flip, tag] of [['upper', halves.hi, true, '-1'], ['lower', halves.lo, false, '-2']]) {
+      const V = part.V, n = V.length / 3;
+      const Vs = new Float64Array(V.length);
+      for (let i = 0; i < n; i++) {
+        Vs[i * 3] = c[0] + (V[i * 3] - c[0]) * s;
+        Vs[i * 3 + 1] = c[1] + (V[i * 3 + 1] - c[1]) * s;
+        Vs[i * 3 + 2] = V[i * 3 + 2];
+      }
+      const sh = shell(Vs, part.F, wallMM / k);
+      const W = new Float64Array(sh.V.length);
+      for (let i = 0; i < sh.V.length; i += 3) {
+        const x = sh.V[i] * k, y = sh.V[i + 1] * k, z = sh.V[i + 2] * k;
+        W[i] = x; W[i + 1] = flip ? -y : y; W[i + 2] = flip ? -z : z;
+      }
+      const bb = bbox(W);
+      for (let i = 0; i < W.length; i += 3) { W[i] -= (bb.min[0] + bb.max[0]) / 2; W[i + 1] -= (bb.min[1] + bb.max[1]) / 2; W[i + 2] -= bb.min[2]; }
+      let out = { V: W, F: sh.F, placed: false };
+      if (labels) out = addLabel(W, sh.F, floorNo + tag, wallMM, labelMM);
+      out.name = floorNo + tag;
+      out.size = bbox(out.V).size;
+      res[key] = out;
+    }
+    return res;
+  }
+
+  // ---------- zip (deflate when CompressionStream exists, else stored) ----------
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  async function deflateRaw(u8) {
+    if (typeof CompressionStream === 'undefined') return null;
+    const s = new Blob([u8]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(s).arrayBuffer());
+  }
+  async function zipEntry(name, data) {
+    const nb = new TextEncoder().encode(name);
+    const crc = crc32(data);
+    const comp = await deflateRaw(data);
+    const method = comp && comp.length < data.length ? 8 : 0;
+    return { nb, crc, method, body: method ? comp : data, usize: data.length };
+  }
+  function zipBlobParts(entries) {
+    const parts = [], central = [];
+    let off = 0;
+    const DATE = (2026 - 1980) << 9 | 11 << 5 | 25;
+    for (const e of entries) {
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, e.method, true);
+      h.setUint16(10, 0, true); h.setUint16(12, DATE, true); h.setUint32(14, e.crc, true); h.setUint32(18, e.body.length, true);
+      h.setUint32(22, e.usize, true); h.setUint16(26, e.nb.length, true); h.setUint16(28, 0, true);
+      parts.push(h.buffer, e.nb, e.body);
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+      c.setUint16(10, e.method, true); c.setUint16(12, 0, true); c.setUint16(14, DATE, true); c.setUint32(16, e.crc, true);
+      c.setUint32(20, e.body.length, true); c.setUint32(24, e.usize, true); c.setUint16(28, e.nb.length, true);
+      c.setUint32(42, off, true);
+      central.push(c.buffer, e.nb);
+      off += 30 + e.nb.length + e.body.length;
+    }
+    const csize = central.reduce((s, p) => s + p.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+    end.setUint32(12, csize, true); end.setUint32(16, off, true);
+    return [...parts, ...central, end.buffer];
+  }
+
+  // assembly sheet: one card per floor (label, angle, scale), black background
+  function assemblySVG(info) {
+    const { floors: fl, scaleDen, wall, title, plates } = info;
+    const cols = 8, cw = 150, ch = 150, pad = 30, top = 120;
+    const rows = Math.ceil(fl.length / cols);
+    const Wd = pad * 2 + cols * cw, Hd = top + rows * ch + pad + 40 + plates.length * 18;
+    const t = [];
+    t.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${Wd}" height="${Hd}" viewBox="0 0 ${Wd} ${Hd}" font-family="DM Sans, PingFang SC, sans-serif">`);
+    t.push(`<rect width="${Wd}" height="${Hd}" fill="#000"/>`);
+    t.push(`<text x="${pad}" y="48" fill="#F5F5F7" font-size="24" font-weight="500">${title} · 组装图</text>`);
+    t.push(`<text x="${pad}" y="78" fill="#8E8E93" font-size="14">1:${scaleDen} · 打印壁厚 ${wall} mm · 每层两片：N-1 上半（翻面打印，组装时翻回）、N-2 下半 · 从下往上按层号粘合</text>`);
+    t.push(`<text x="${pad}" y="100" fill="#8E8E93" font-size="14">角度为相对第 1 层逆时针旋转（俯视），橙线为第 1 层的十字臂方向</text>`);
+    fl.forEach((f, i) => {
+      const x = pad + (i % cols) * cw, y = top + Math.floor(i / cols) * ch;
+      const cx = x + cw / 2, cy = y + 62, a = f.angle % 360;
+      t.push(`<rect x="${x + 4}" y="${y + 4}" width="${cw - 8}" height="${ch - 8}" rx="10" fill="#0B0B0C" stroke="#2C2C2E"/>`);
+      t.push(`<line x1="${cx - 40}" y1="${cy}" x2="${cx + 40}" y2="${cy}" stroke="#FF6A3D" stroke-width="1" opacity="0.7"/><line x1="${cx}" y1="${cy - 40}" x2="${cx}" y2="${cy + 40}" stroke="#FF6A3D" stroke-width="1" opacity="0.7"/>`);
+      const r = 38 * f.s;
+      t.push(`<g transform="rotate(${-a} ${cx} ${cy})"><rect x="${cx - r}" y="${cy - r * 0.16}" width="${2 * r}" height="${r * 0.32}" fill="none" stroke="#F5F5F7" stroke-width="1.4"/><rect x="${cx - r * 0.16}" y="${cy - r}" width="${r * 0.32}" height="${2 * r}" fill="none" stroke="#F5F5F7" stroke-width="1.4"/></g>`);
+      t.push(`<text x="${x + 14}" y="${y + 26}" fill="#F5F5F7" font-size="18" font-weight="500">${f.no}</text>`);
+      t.push(`<text x="${x + cw - 14}" y="${y + 26}" fill="#8E8E93" font-size="12" text-anchor="end">盘 ${f.plate}</text>`);
+      t.push(`<text x="${cx}" y="${y + 122}" fill="#F5F5F7" font-size="13" text-anchor="middle">${+f.angle.toFixed(1)}° · ×${f.s.toFixed(2)}</text>`);
+      t.push(`<text x="${cx}" y="${y + 138}" fill="#8E8E93" font-size="11" text-anchor="middle">${f.no}-1 上 · ${f.no}-2 下</text>`);
+    });
+    const py = top + rows * ch + pad;
+    t.push(`<text x="${pad}" y="${py}" fill="#F5F5F7" font-size="15" font-weight="500">打印盘分配（A1 · 256 × 256 mm）</text>`);
+    plates.forEach((p, i) => t.push(`<text x="${pad}" y="${py + 24 + i * 18}" fill="#8E8E93" font-size="13">盘 ${i + 1}：${p.join('、')}</text>`));
+    t.push('</svg>');
+    return t.join('\n');
+  }
+
+  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, floors, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, addLabel, glyphRects, zipEntry, zipBlobParts, crc32, assemblySVG };
 })();
 if (typeof module !== 'undefined') module.exports = Core;
 // ===================== CORE-END =====================
@@ -564,6 +809,8 @@ if (typeof module !== 'undefined') module.exports = Core;
 const $ = id => document.getElementById(id);
 const GH = { count: 40, gap: 3.6, minR: 0.62, curve: 'linear', step: 22.5, thick: 0.1, pivot: 'centroid' };
 const S = Object.assign({ unit: 1, upY: false }, GH);
+const PR = { den: 500, wall: 1.2, labels: true, preview: 0 };
+let halves = null;
 let raw = null, fileName = '示例楼板', baseMesh = null, geo = null;
 
 // ---------- geometry state ----------
@@ -583,6 +830,8 @@ function rebuild() {
   if (S.pivot === 'bbox') c = bc;
   else c = vc.c && Math.abs(vc.vol) > 1e-12 ? vc.c : Core.areaCentroid(V, F).c;
   geo = { V, F, bb, c, es, thick, h: bb.size[2] };
+  halves = null;
+  PR.preview = 0;
   uploadMesh();
   updateInfo();
   update(true);
@@ -626,9 +875,74 @@ function update(refit) {
   $('readExport').innerHTML = (mb > 300 ? `<span class="warn">STL 约 ${fmt(mb, 0)} MB，面数较多，导出可能较慢。</span><br>` : mb < 1 ? `STL 约 ${fmt(mb * 1024, 0)} KB。` : `STL 约 ${fmt(mb, 1)} MB。`) +
     '导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。';
   $('hudA').textContent = `${S.count} 层 · 总高 ${fmt(H, 1)} m · 扭转 ${fmt((S.count - 1) * S.step, 1)}°`;
+  updatePrint(fl, p);
+  if (PR.preview) { PR.preview = 0; R.upload(geo); refit = true; }
+  $('btnPrev').textContent = '预览分件';
   R.setFloors(fl, geo, p);
   if (refit) R.fit();
   R.draw();
+}
+
+// ---------- print parts ----------
+const PLATE = 256, MARGIN = 5, GAP = 6;
+function printFactor() { return S.unit * 1000 / PR.den; }              // mm per file unit
+function getHalves() {
+  if (!halves) {
+    const bb0 = Core.bbox(baseMesh.V);
+    halves = Core.cutZ(baseMesh.V, baseMesh.F, (bb0.min[2] + bb0.max[2]) / 2);
+  }
+  return halves;
+}
+function plan(fl) {
+  // footprint of a full-size piece in mm (shell adds the wall on each side)
+  const k = printFactor(), bb0 = Core.bbox(baseMesh.V);
+  const size = s => Math.max(bb0.size[0], bb0.size[1]) * s * k + PR.wall;
+  const cap = d => { const n = Math.floor((PLATE - 2 * MARGIN + GAP) / (d + GAP)); return n * n; };
+  const plates = [];
+  let cur = [], curMax = 0;
+  for (const f of fl) {
+    const d = size(f.s), m = Math.max(curMax, d);
+    if (cur.length && (cur.length + 1) * 2 > cap(m)) { plates.push(cur); cur = []; curMax = 0; }
+    cur.push(f.i + 1); curMax = Math.max(curMax, d);
+  }
+  if (cur.length) plates.push(cur);
+  const sizes = fl.map(f => size(f.s));
+  const halfH = (bb0.size[2] / 2) * k + PR.wall;
+  return { plates, maxD: Math.max(...sizes), minD: Math.min(...sizes), halfH, fits: Math.max(...sizes) <= PLATE - 2 * MARGIN };
+}
+function updatePrint(fl) {
+  const ok = !geo.es.closed && geo.thick;
+  $('btnPrev').disabled = $('btnPrint').disabled = !ok;
+  if (!ok) { $('readPrint').innerHTML = '<span class="warn">分件需要开放面单体（闭合实体暂不支持切半）</span>'; return; }
+  const pl = plan(fl);
+  const wReal = PR.wall * PR.den / 1000;
+  $('readPrint').innerHTML =
+    `每层切成上下两半（单体中线），上半翻面打印<br>` +
+    `单片 ${fmt(pl.maxD, 0)}–${fmt(pl.minD, 0)} mm 见方 · 高约 ${fmt(pl.halfH, 1)} mm<br>` +
+    `${S.count * 2} 片 · 约 ${pl.plates.length} 盘 · 壁厚相当于真实 ${fmt(wReal, 2)} m` +
+    (pl.fits ? '' : `<br><span class="warn">最大单片超过 ${PLATE - 2 * MARGIN} mm，放不进 A1，请换小一点的比例</span>`);
+  $('nPrev').max = S.count;
+}
+function piecesFor(i, fl) {
+  return Core.printPieces(getHalves(), geo.c, fl[i].s, printFactor(), PR.wall, i + 1, PR.labels, 5);
+}
+function showPreview(n) {
+  const fl = Core.floors(params());
+  const i = Math.max(1, Math.min(S.count, n | 0)) - 1;
+  const P = piecesFor(i, fl);
+  const a = P.upper, b = P.lower;
+  const off = (a.size[0] + b.size[0]) / 4 + 5;
+  const V = new Float64Array(a.V.length + b.V.length);
+  for (let j = 0; j < a.V.length; j += 3) { V[j] = a.V[j] - off; V[j + 1] = a.V[j + 1]; V[j + 2] = a.V[j + 2]; }
+  for (let j = 0; j < b.V.length; j += 3) { const o = a.V.length + j; V[o] = b.V[j] + off; V[o + 1] = b.V[j + 1]; V[o + 2] = b.V[j + 2]; }
+  const F = new Uint32Array(a.F.length + b.F.length);
+  F.set(a.F); const nA = a.V.length / 3;
+  for (let j = 0; j < b.F.length; j++) F[a.F.length + j] = b.F[j] + nA;
+  const g = { V, F, c: [0, 0, 0], bb: Core.bbox(V) };
+  PR.preview = i + 1;
+  R.upload(g); R.setFloors([{ i: 0, s: 1, th: 0, z: 0 }], g, { pitch: 0 }); R.fit(); R.draw();
+  $('hudA').textContent = `第 ${i + 1} 层分件 · 左 ${i + 1}-1 上半（已翻面）· 右 ${i + 1}-2 下半 · 单位 mm` + (a.placed && b.placed ? '' : ' · 层号放不下');
+  $('btnPrev').textContent = '返回塔楼';
 }
 
 function bindSlider(key, nId, rId, opts = {}) {
@@ -648,6 +962,21 @@ function bindSlider(key, nId, rId, opts = {}) {
   r.addEventListener('input', () => set(r.value, r));
   n.addEventListener('change', () => set(n.value, n));
   return { sync() { n.value = S[key]; r.value = S[key]; paint(); } };
+}
+const wallSlider = (() => {
+  const n = $('nWall'), r = $('rWall');
+  const paint = () => r.style.setProperty('--p', (r.value - r.min) / (r.max - r.min) * 100 + '%');
+  const set = (v, from) => { v = Math.max(0.4, Math.min(5, +v)); if (!isFinite(v)) return; PR.wall = v; if (from !== n) n.value = v; if (from !== r) r.value = v; paint(); update(false); };
+  r.addEventListener('input', () => set(r.value, r)); n.addEventListener('change', () => set(n.value, n));
+  return { sync() { n.value = PR.wall; r.value = PR.wall; paint(); } };
+})();
+for (const [id, fn] of [['segScale', v => { PR.den = +v; }], ['segLabel', v => { PR.labels = v === '1'; }]]) {
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    fn(b.dataset.v);
+    for (const x of $(id).querySelectorAll('button')) x.classList.toggle('on', x === b);
+    update(false);
+  });
 }
 const sliders = [
   bindSlider('thick', 'nThick', 'rThick', { lo: 0.001, hi: 50, geom: true }),
@@ -675,6 +1004,7 @@ bindSeg('segCurve', 'curve', v => v, false);
 bindSeg('segPivot', 'pivot', v => v, true);
 function syncAll() {
   sliders.forEach(s => s.sync());
+  wallSlider.sync();
   for (const [id, key] of [['segUnit', 'unit'], ['segUp', 'upY'], ['segCurve', 'curve'], ['segPivot', 'pivot']]) syncSeg(id, key);
 }
 
@@ -722,6 +1052,49 @@ async function loadUnit(quiet) {
 $('btnUnit').onclick = () => loadUnit(false);
 $('btnReset').onclick = () => { Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY); syncAll(); rebuild(); };
 $('btnFit').onclick = () => { R.fit(); R.draw(); };
+$('btnPrev').onclick = () => {
+  if (PR.preview) { update(true); return; }
+  const b = $('btnPrev'); b.textContent = '生成中…'; b.disabled = true;
+  setTimeout(() => { try { showPreview(+$('nPrev').value || 1); } catch (e) { console.error(e); toast('预览失败：' + e.message); } b.disabled = false; }, 30);
+};
+$('btnPrint').onclick = async () => {
+  const btn = $('btnPrint'); btn.disabled = true;
+  try {
+    const fl = Core.floors(params());
+    const pl = plan(fl);
+    const folder = `${baseName()}_1-${PR.den}_打印件/`;
+    const entries = [], missing = [];
+    for (let i = 0; i < fl.length; i++) {
+      btn.textContent = `${i + 1}/${fl.length}`;
+      await new Promise(r => setTimeout(r, 0));
+      const P = piecesFor(i, fl);
+      for (const pc of [P.upper, P.lower]) {
+        if (PR.labels && !pc.placed) missing.push(pc.name);
+        const stl = new Uint8Array(Core.exportSTL(pc.V, pc.F, [0, 0, 0], [{ i: 0, z: 0, s: 1, th: 0 }], 1));
+        entries.push(await Core.zipEntry(folder + pc.name + '.stl', stl));
+      }
+    }
+    btn.textContent = '打包…';
+    const info = {
+      title: fileName.replace(/\.stl$/i, ''), scaleDen: PR.den, wall: PR.wall,
+      floors: fl.map(f => ({ no: f.i + 1, angle: f.th * 180 / Math.PI, s: f.s, plate: pl.plates.findIndex(p => p.includes(f.i + 1)) + 1 })),
+      plates: pl.plates.map(p => p.flatMap(n => [n + '-1', n + '-2'])),
+    };
+    const enc = new TextEncoder();
+    entries.push(await Core.zipEntry(folder + '组装图.svg', enc.encode(Core.assemblySVG(info))));
+    const notes = [
+      `单体塔楼 · 打印分件`, `比例 1:${PR.den} · 打印壁厚 ${PR.wall} mm（相当于真实 ${PR.wall * PR.den / 1000} m）· 单位 mm`,
+      `每层切成上下两半：N-1 = 上半（已翻面，平面朝下打印，组装时翻回），N-2 = 下半`,
+      `层号凸字在臂内槽底，组装后被盖住`, `扭转：每层相对下一层 ${S.step}°（逆时针，俯视），见 组装图.svg`, '',
+      `打印盘分配（A1 256 × 256 mm）：`, ...info.plates.map((p, i) => `盘 ${i + 1}：${p.join('、')}`),
+      ...(missing.length ? ['', `以下零件放不下层号：${missing.join('、')}`] : []),
+    ].join('\r\n');
+    entries.push(await Core.zipEntry(folder + '说明.txt', enc.encode('\ufeff' + notes)));
+    save(new Blob(Core.zipBlobParts(entries), { type: 'application/zip' }), `${baseName()}_1-${PR.den}_打印件.zip`, 'application/zip');
+    toast(`已导出 ${fl.length * 2} 片` + (missing.length ? ` · ${missing.length} 片层号放不下` : ''));
+  } catch (e) { console.error(e); toast('导出失败：' + (e.message || e)); }
+  btn.disabled = false; btn.textContent = '导出 ZIP';
+};
 
 let toastT;
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -730,7 +1103,7 @@ function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add
 const unitName = () => S.unit === 0.001 ? 'Millimeters' : S.unit === 0.01 ? 'Centimeters' : 'Meters';
 const baseName = () => (fileName.replace(/\.stl$/i, '') || 'unit') + `_tower_${S.count}F`;
 function save(data, name, type) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
+  const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type }));
   const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
