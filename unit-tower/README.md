@@ -34,3 +34,11 @@ Panel **打印分件** exports every floor as two printable pieces in one ZIP:
 - The ZIP has `按盘/` (one STL per plate, pieces already placed, named e.g. `盘01_1-2_2-2_17-2_39-2_40-2.stl`), `单片/` (one STL per piece), `组装图.svg` (angle, scale and plate per floor) and `说明.txt`. Floors are glued; there are no alignment pins yet.
 - Only open-surface units can be cut this way (closed solids are not supported yet).
 - The cut is clean: mesh vertices lying exactly on the cut plane (the sample unit has a whole row at mid-height) are shared by both halves instead of being re-cut into near-duplicates, and the shell's offset at the cut slides along the wall onto the plane, so the glue faces are flat (no sawtooth, wall thickness kept). Anything the offset pushes past the cut plane (near-horizontal surface just below or above the cut) is clamped onto it, so both halves are exactly half a floor high and close without a gap.
+
+## From the minimal surface catalogue
+
+Both pages share a step bar: **‹ Catalogue · ① Unit ② Tower ③ Print**. In the catalogue (`../minimal-surfaces/`), **Use as tower unit →** stores the current unit (open mid-surface with its placement and mirror array, Z up, scaled so one unit = one 3.6 m floor) in this browser and opens this page, which loads it with clear height 0. The twist is set to the first angle where floors join, and a unit card shows its thumbnail and parameters with a link back.
+
+**Floor joints**: for open-surface units the page measures how much of each floor's top edge meets the next floor's bottom edge (turned by the twist), for every angle from −180° to 180°. Angles with ≥ 90 % contact get cyan ticks under the twist slider, and the slider snaps to them; below 50 % a warning says the printed floors will not hold. Units whose top or bottom is a horizontal sheet (like the sample slab) skip this check. The twist slider now runs from −180° to 180°.
+
+**② Tower / ③ Print**: Print parts is its own step; entering it previews the parts of the selected floor.
