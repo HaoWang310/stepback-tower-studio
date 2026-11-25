@@ -755,6 +755,10 @@ const Core = (() => {
         Vs[i * 3 + 2] = V[i * 3 + 2];
       }
       const sh = shell(Vs, part.F, wallMM / k, halves.zc);
+      // nothing may cross the cut plane: near-horizontal surface just below/above the cut gets
+      // pushed past it by the offset and would hold the two halves apart, so clamp it flat
+      if (halves.zc !== undefined) for (let i = 2; i < sh.V.length; i += 3)
+        sh.V[i] = flip ? Math.max(sh.V[i], halves.zc) : Math.min(sh.V[i], halves.zc);
       let sx0 = Infinity, sx1 = -Infinity, sy0 = Infinity, sy1 = -Infinity;
       for (let i = 0; i < Vs.length; i += 3) {
         const x = (Vs[i] - c[0]) * k, y = (Vs[i + 1] - c[1]) * k * (flip ? -1 : 1);
