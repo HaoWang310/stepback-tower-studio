@@ -3,7 +3,7 @@
 > **独立存储。** 这个文件夹专门存放极小曲面目录的全部资料，和本仓库的 STEPBACK 工作室互不引用、互不影响。
 >
 > **在线浏览**：https://haowang310.github.io/stepback-tower-studio/minimal-surfaces/
-> （GitHub Pages 发布整个仓库，所以这个文件夹的 `index.html` 就是目录 app 的网址。导出 STL 需在 claude.ai 版本中使用。）
+> （GitHub Pages 发布整个仓库，所以这个文件夹的 `index.html` 就是目录 app 的网址。底部工具栏最右边的 ↓ 按钮导出 STL：claude.ai 版本里是 zip，GitHub Pages 版本里直接下载 .stl。）
 
 ## 分类方式
 

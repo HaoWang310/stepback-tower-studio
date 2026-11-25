@@ -1113,8 +1113,15 @@ let dl = null;
 if (window.claude && claude.use) claude.use('downloads').then(d => { dl = d; }).catch(() => {});
 $('#b-stl').addEventListener('click', async () => {
   if (!cur) return;
-  if (!dl){ toast('这个视图暂时不能下载，请在 claude.ai 打开本页'); return; }
   const tag = S.no + "-" + S.spec.map(([k]) => k + P[k]).join("-") + (P.fl > 0 ? `-${P.fl}F` : "") + `-t${P.t}mm`;
+  if (!dl){   // 不在 claude.ai 里（例如 GitHub Pages）：用浏览器普通下载，直接存 .stl
+    try {
+      const url = URL.createObjectURL(new Blob([stl()], {type:'model/stl'})), a = document.createElement('a');
+      a.href = url; a.download = `minimal-surface-${tag}.stl`; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000); toast('已导出 STL');
+    } catch (e){ toast('这个视图不能下载，请在浏览器里直接打开本页'); }
+    return;
+  }
   try {
     await dl.save({filename:`minimal-surface-${tag}.zip`, data:zip(`minimal-surface-${tag}.stl`, stl())});
     toast('已导出 STL（zip 压缩包内）');
