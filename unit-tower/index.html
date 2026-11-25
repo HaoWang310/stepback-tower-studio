@@ -405,7 +405,7 @@ const Core = (() => {
   // two-sided thickening (total t, t/2 each side) of a unified mesh. Where the orientation cannot
   // agree ("twist" edges) the sheet is cut, and top/bottom of the two sides are stitched crosswise,
   // so the shell stays closed and continuous.
-  function shell(V, F0, t) {
+  function shell(V, F0, t, planeZ) {
     const nv = V.length / 3;
     const u = unifyNormals(V, F0);
     const F = u.F, nf = F.length / 3;
@@ -453,9 +453,15 @@ const Core = (() => {
       let l = Math.hypot(e[0], e[1], e[2]);
       let nx = e[0], ny = e[1], nz = e[2];
       if (l < 1e-12) { nx = 0; ny = 0; nz = 1; l = 1; }
-      const h = t / 2 / l;
+      let ox = nx * t / 2 / l, oy = ny * t / 2 / l, oz = nz * t / 2 / l;
+      if (planeZ !== undefined && Math.abs(V[v + 2] - planeZ) < 1e-6 * (1 + Math.abs(planeZ))) {
+        // move the offset point along the wall (within its tangent plane) until it lies on the cut plane
+        const ux = nx / l, uy = ny / l, uz = nz / l, gz = 1 - uz * uz;
+        if (gz > 0.15) { const k = oz / gz; ox += k * ux * uz; oy += k * uy * uz; oz = 0; }
+        else { const hl = Math.hypot(ux, uy) || 1; ox = ux / hl * t / 2; oy = uy / hl * t / 2; oz = 0; }
+      }
       const i = outV.length / 3;
-      outV.push(V[v] + nx * h, V[v + 1] + ny * h, V[v + 2] + nz * h, V[v] - nx * h, V[v + 1] - ny * h, V[v + 2] - nz * h);
+      outV.push(V[v] + ox, V[v + 1] + oy, V[v + 2] + oz, V[v] - ox, V[v + 1] - oy, V[v + 2] - oz);
       idx.set(root, i);
     }
     const top = c => { const [root, par] = findQ(find(c)); return idx.get(root) + par; };
@@ -603,28 +609,37 @@ const Core = (() => {
   function cutZ(V, F, zc) {
     const nv = V.length / 3;
     const bb = bbox(V);
-    const eps = (Math.hypot(...bb.size) || 1) * 1e-7;
-    const d = new Float64Array(nv);
-    for (let i = 0; i < nv; i++) { const v = V[i * 3 + 2] - zc; d[i] = Math.abs(v) < eps ? eps : v; }
-    const P = i => [V[i * 3], V[i * 3 + 1], V[i * 3 + 2]];
+    const eps = (Math.hypot(...bb.size) || 1) * 1e-6;
+    const d = new Float64Array(nv), sg = new Int8Array(nv);
+    for (let i = 0; i < nv; i++) { d[i] = V[i * 3 + 2] - zc; sg[i] = Math.abs(d[i]) <= eps ? 0 : d[i] > 0 ? 1 : -1; }
+    // vertices on the plane are snapped onto it exactly, so both halves share them
+    const P = i => sg[i] === 0 ? [V[i * 3], V[i * 3 + 1], zc] : [V[i * 3], V[i * 3 + 1], V[i * 3 + 2]];
     const cutP = (a, b) => {
       const lo = Math.min(a, b), hi = Math.max(a, b), t = d[lo] / (d[lo] - d[hi]);
       return [V[lo * 3] + (V[hi * 3] - V[lo * 3]) * t, V[lo * 3 + 1] + (V[hi * 3 + 1] - V[lo * 3 + 1]) * t, zc];
     };
-    const out = [[], []];
+    const out = [[], []];                       // 0 = below, 1 = above
     const tri = (h, p, q, r) => out[h].push(...p, ...q, ...r);
     for (let t = 0; t < F.length; t += 3) {
-      const ids = [F[t], F[t + 1], F[t + 2]];
-      const s = ids.map(i => d[i] > 0 ? 1 : 0);
-      if (s[0] === s[1] && s[1] === s[2]) { tri(s[0], P(ids[0]), P(ids[1]), P(ids[2])); continue; }
-      let k = s[0] !== s[1] && s[0] !== s[2] ? 0 : s[1] !== s[0] && s[1] !== s[2] ? 1 : 2;
+      const ids = [F[t], F[t + 1], F[t + 2]], s3 = ids.map(i => sg[i]);
+      const hasP = s3.includes(1), hasN = s3.includes(-1);
+      if (!hasP || !hasN) { tri(hasP ? 1 : 0, P(ids[0]), P(ids[1]), P(ids[2])); continue; }
+      const z = s3.indexOf(0);
+      if (z >= 0) {
+        // one vertex on the plane, the other two on opposite sides: split along the line through it
+        const p = ids[z], q = ids[(z + 1) % 3], r = ids[(z + 2) % 3], X = cutP(q, r);
+        tri(sg[q] > 0 ? 1 : 0, P(p), P(q), X);
+        tri(sg[r] > 0 ? 1 : 0, P(p), X, P(r));
+        continue;
+      }
+      const k = s3[0] !== s3[1] && s3[0] !== s3[2] ? 0 : s3[1] !== s3[0] && s3[1] !== s3[2] ? 1 : 2;
       const p = ids[k], q = ids[(k + 1) % 3], r = ids[(k + 2) % 3];
-      const P1 = cutP(p, q), P2 = cutP(p, r);
-      tri(s[k], P(p), P1, P2);
-      tri(1 - s[k], P1, P(q), P(r));
-      tri(1 - s[k], P1, P(r), P2);
+      const P1 = cutP(p, q), P2 = cutP(p, r), hp = sg[p] > 0 ? 1 : 0;
+      tri(hp, P(p), P1, P2);
+      tri(1 - hp, P1, P(q), P(r));
+      tri(1 - hp, P1, P(r), P2);
     }
-    return { lo: weld(new Float32Array(out[0]), false), hi: weld(new Float32Array(out[1]), false) };
+    return { lo: weld(new Float32Array(out[0]), false), hi: weld(new Float32Array(out[1]), false), zc };
   }
 
   function boxTris(x0, y0, z0, x1, y1, z1, V, F) {
@@ -739,7 +754,7 @@ const Core = (() => {
         Vs[i * 3 + 1] = c[1] + (V[i * 3 + 1] - c[1]) * s;
         Vs[i * 3 + 2] = V[i * 3 + 2];
       }
-      const sh = shell(Vs, part.F, wallMM / k);
+      const sh = shell(Vs, part.F, wallMM / k, halves.zc);
       let sx0 = Infinity, sx1 = -Infinity, sy0 = Infinity, sy1 = -Infinity;
       for (let i = 0; i < Vs.length; i += 3) {
         const x = (Vs[i] - c[0]) * k, y = (Vs[i + 1] - c[1]) * k * (flip ? -1 : 1);
@@ -1193,7 +1208,7 @@ function packKey() {
 async function ensurePacked(progress) {
   const key = packKey();
   if (packCache && packCache.key === key) return packCache;
-  const fl = Core.floors(params()), hv = getHalves(), k = printFactor(), dil = PR.wall / 2 + PR.gap / 2;
+  const fl = Core.floors(params()), hv = getHalves(), k = printFactor(), dil = PR.wall + PR.gap / 2;   // the flattened cut can reach up to ~1 wall sideways
   const items = [];
   for (let i = 0; i < fl.length; i++) {
     if (progress) progress(t('progOutline', { i: i + 1, n: fl.length }));
