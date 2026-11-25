@@ -324,7 +324,7 @@ function emit(pos, nV, topo, ts){
   });
   const zc = (zmin+zmax)/2;
   for (let v=1; v<P3.length; v+=3) P3[v] -= zc;
-  return {pos:P3, idx, lin};
+  return {pos:P3, idx, lin, zc};
 }
 
 /* =====================================================================
@@ -440,12 +440,13 @@ function assemble(pos, nu, nv, ts, lu, lv, box){
   for (let v=0; v<n; v++) for (let k=0;k<3;k++){ const x=P[v*3+k]; if (x<lo[k]) lo[k]=x; if (x>hi[k]) hi[k]=x; }
   const c = [0,1,2].map(k => (lo[k]+hi[k])/2);
   for (let v=0; v<n; v++){ out[v*3]=P[v*3]-c[0]; out[v*3+1]=P[v*3+2]-c[2]; out[v*3+2]=-(P[v*3+1]-c[1]); }
-  return {pos: out, idx: Uint32Array.from(I), lin: Uint32Array.from(Ln)};
+  return {pos: out, idx: Uint32Array.from(I), lin: Uint32Array.from(Ln), c};
 }
 // 依次用 6 个平面裁剪（跨边界的三角形按线性插值切开，边界干净）
 function clipBox(P, I, Ln, box){
   for (let ax=0; ax<3; ax++) for (const sg of [1,-1]){
     const lim = sg>0 ? box[1][ax] : -box[0][ax], f = v => sg*P[v*3+ax] - lim;
+    if (!isFinite(lim)) continue;
     const NI = [], cache = new Map();
     const cut = (a, b) => { const key = a<b ? a+'_'+b : b+'_'+a; if (cache.has(key)) return cache.get(key);
       const fa=f(a), fb=f(b), t=fa/(fa-fb), id=P.length/3; for (let k=0;k<3;k++) P.push(P[a*3+k]+t*(P[b*3+k]-P[a*3+k])); cache.set(key, id); return id; };
@@ -542,6 +543,122 @@ function kmrBuild(P){
   return assemble(pos, nu, nv, all, 10, 6, null);
 }
 
+/* =====================================================================
+   塔楼模式：每个曲面只与自身竖向叠加；楼板只放在水平镜像面上
+   （镜像面处曲面与水平面垂直相交）。各曲面的镜像面位置：
+   001 z = (2j+1)h · 003 z = j·r5 · 004 z = j · 005（竖放，数学 y 朝上）y = jπ
+   006（竖放，数学 x 朝上）x = j·2f(i)ₓ · 002 无水平镜像面，只按周期叠加、不放楼板
+   ===================================================================== */
+const RX90 = [1,0,0, 0,0,-1, 0,1,0], RYm90 = [0,0,-1, 0,1,0, 1,0,0];   // y→z、x→z（纯旋转）
+function trTower(P, N){
+  const {r1, r5} = TR, s3 = Math.sqrt(3);
+  const G = {a:[1,0,0,0, 0,1,0,0, 0,0,-1,0, 0,0,0,1], b:[1,0,0,0, 0,-1,0,0, 0,0,1,0, 0,0,0,1],
+    c:[.5,s3/2,0,0, s3/2,-.5,0,0, 0,0,1,0, 0,0,0,1], d:[1,0,0,0, 0,1,0,0, 0,0,-1,2*r5, 0,0,0,1], e:[-1,0,0,2*r1, 0,1,0,0, 0,0,1,0, 0,0,0,1]};
+  let S = texpr(P.c === 2 ? 'abcbcbcecbcbc' : 'abcbcbc', G); S = S.concat(S.map(t => m4(G.d, t)));   // 一个竖向周期 = 2 层
+  const all = []; for (let i=-1; i<=Math.ceil(N/2)+1; i++) for (const t of S){ const r = t.slice(); r[11] += 2*r5*i; all.push(r); }
+  const ts = all.map(t => { const m = [t[0],t[1],t[2], t[4],t[5],t[6], t[8],t[9],t[10]];
+    const det = m[0]*(m[4]*m[8]-m[5]*m[7]) - m[1]*(m[3]*m[8]-m[5]*m[6]) + m[2]*(m[3]*m[7]-m[4]*m[6]); return {m, o:[t[3],t[7],t[11]], f: det < 0}; });
+  const out = emit(TR.V, TR.V.length/3, {tri: Array.from(TR.T), line: Array.from(TR.E)}, ts);
+  return {res: out, y0: 0 - out.zc, d: r5};
+}
+function mtTower(P, N){
+  const two = P.m === 5, base = mtExpr('hfebdbdbd'), all = [];
+  const xy = two ? [[-1,-1],[1,-1],[-1,1],[1,1]] : [[0,0]];
+  for (let k=-1; k<=Math.ceil(N/2)+1; k++) for (const [dx,dy] of xy) for (const t of base){ const r = t.slice(); r[3] += dx; r[7] += dy; r[11] += 2*k; all.push(r); }
+  const ts = all.map(t => { const m = [t[0],t[1],t[2], t[4],t[5],t[6], t[8],t[9],t[10]];
+    const det = m[0]*(m[4]*m[8]-m[5]*m[7]) - m[1]*(m[3]*m[8]-m[5]*m[6]) + m[2]*(m[3]*m[7]-m[4]*m[6]); return {m, o:[t[3],t[7],t[11]], f: (det < 0) !== !!t[16]}; });
+  const out = emit(MT.V, MT.V.length/3, {tri: Array.from(MT.T), line: Array.from(MT.E)}, ts);
+  return {res: out, y0: 0 - out.zc, d: 1};
+}
+function scherkTower(P, N){
+  const pt = scherkPatch(P.h, 30, 30), g = i => [pt.pos[i*3], pt.pos[i*3+1], pt.pos[i*3+2]];
+  const a0 = g((pt.nu-1)*pt.nv), a1 = g((pt.nu-1)*pt.nv + pt.nv-1);
+  let ts = [{m:I3, o:[0,0,0], f:false}];
+  ts = closeT(ts, rotLine(a0, [a1[0]-a0[0], a1[1]-a0[1], a1[2]-a0[2]]));
+  ts = closeT(ts, reflPlane([1,0,0], 0)); ts = closeT(ts, reflPlane([0,1,0], 0));
+  const half = P.w*Math.PI/2, nx = Math.ceil(half/(2*Math.PI) + 0.5), H = N*Math.PI, all = [];
+  for (let i=-nx; i<=nx; i++) for (let j=-1; j<=Math.ceil(N/2)+1; j++) ts.forEach(t => all.push(comp({m:RX90, o:[0,0,0], f:false}, comp({m:I3, o:[2*Math.PI*i, 2*Math.PI*j, 0], f:false}, t))));
+  const out = assemble(pt.pos, pt.nu, pt.nv, all, 5, 5, [[-half,-Infinity,0],[half,Infinity,H]]);
+  return {res: out, y0: 0 - out.c[2], d: Math.PI, clipped: true};
+}
+function kmrTower(P, N){
+  const a = P.a, r0 = P.r0, nx = 30, ny = 18, eps = 1e-6;
+  const xs = []; for (let i=0; i<=nx; i++) xs.push(Math.log(r0) + (Math.log(a)-Math.log(r0))*i/nx);
+  for (let i=1; i<=nx; i++) xs.push(Math.log(a) + (0-Math.log(a))*i/nx);
+  const nu = xs.length, nv = ny+1, pos = new Float64Array(nu*nv*3), fa = kmrF([a,0], a);
+  for (let i=0; i<nu; i++) for (let j=0; j<nv; j++){
+    const t = eps + (Math.PI/2-2*eps)*j/ny, r = Math.exp(xs[i]), f = kmrF([r*Math.cos(t), r*Math.sin(t)], a), o = (i*nv+j)*3;
+    pos[o] = f[0]-fa[0]; pos[o+1] = f[1]-fa[1]; pos[o+2] = f[2]-fa[2];
+  }
+  const g = (i, j) => { const o = (i*nv+j)*3; return [pos[o], pos[o+1], pos[o+2]]; };
+  const p0 = g(0, ny), p1 = g(nu-1, ny), p2 = g(nu-1, 0);
+  let ts = [{m:I3, o:[0,0,0], f:false}];
+  ts = closeT(ts, rotLine(p0, [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]]));
+  ts = closeT(ts, rotLine(p1, [p2[0]-p1[0], p2[1]-p1[1], p2[2]-p1[2]]));
+  ts = closeT(ts, reflPlane([1,0,0], 0)); ts = closeT(ts, reflPlane([0,1,0], 0));
+  const dx = 4*p1[0], dy = 2*Math.PI, H = N*dx/2, all = [];
+  for (let i=-1; i<=Math.ceil(N/2)+1; i++) for (let j=0; j<P.n; j++) ts.forEach(t => all.push(comp({m:RYm90, o:[0,0,0], f:false}, comp({m:I3, o:[i*dx, j*dy, 0], f:false}, t))));
+  const out = assemble(pos, nu, nv, all, 10, 6, [[-Infinity,-Infinity,0],[Infinity,Infinity,H]]);
+  return {res: out, y0: 0 - out.c[2], d: dx/2, clipped: true};
+}
+function seTower(S, P, N){
+  const res = S.build({...P, n: Math.ceil(N/2)+2}), h = res.h;
+  let ymin = Infinity; for (let i=1; i<res.pos.length; i+=3) if (res.pos[i] < ymin) ymin = res.pos[i];
+  let j = Math.ceil(((ymin + res.zc)/h - 1)/2); let y0 = (2*j+1)*h - res.zc;
+  while (y0 < ymin + 1e-6){ j++; y0 = (2*j+1)*h - res.zc; }
+  return {res, y0, d: 2*h};
+}
+// 截取 [y0, y0+N·d]，重新居中，生成楼板
+function towerFinish(t, N, round){
+  let {res, y0, d} = t, P = Array.from(res.pos), I = Array.from(res.idx), Ln = Array.from(res.lin);
+  if (!t.clipped) [P, I, Ln] = clipBox(P, I, Ln, [[-Infinity, y0, -Infinity],[Infinity, y0 + N*d, Infinity]]);
+  else { // assemble 已在数学坐标里截好；这里只把 y0 对齐
+  }
+  const n = P.length/3, lo = [Infinity,Infinity,Infinity], hi = [-Infinity,-Infinity,-Infinity];
+  for (let v=0; v<n; v++) for (let k=0; k<3; k++){ const x = P[v*3+k]; if (x<lo[k]) lo[k]=x; if (x>hi[k]) hi[k]=x; }
+  const c = [(lo[0]+hi[0])/2, y0 + N*d/2, (lo[2]+hi[2])/2], pos = new Float32Array(P.length);
+  let R = 0;
+  for (let v=0; v<n; v++){ for (let k=0; k<3; k++) pos[v*3+k] = P[v*3+k] - c[k]; R = Math.max(R, Math.hypot(pos[v*3], pos[v*3+2])); }
+  const levels = []; for (let i=0; i<=N; i++) levels.push(-N*d/2 + i*d);
+  return {pos, idx: Uint32Array.from(I), lin: Uint32Array.from(Ln), levels, foot: round ? {r: R} : {x0: lo[0]-c[0], x1: hi[0]-c[0], z0: lo[2]-c[2], z1: hi[2]-c[2]}};
+}
+function slabGeom(levels, foot, th){
+  const P = [], I = [], h = th/2;
+  const box = (y) => {
+    const b = P.length/3;
+    if (foot.r){
+      const m = 64; for (const yy of [y-h, y+h]) for (let i=0; i<m; i++){ const a = 2*Math.PI*i/m; P.push(foot.r*Math.cos(a), yy, foot.r*Math.sin(a)); }
+      P.push(0, y-h, 0, 0, y+h, 0); const cb = b+2*m, ct = cb+1;
+      for (let i=0; i<m; i++){ const j = (i+1)%m; I.push(cb, b+j, b+i, ct, b+m+i, b+m+j, b+i, b+j, b+m+j, b+i, b+m+j, b+m+i); }
+    } else {
+      const {x0, x1, z0, z1} = foot;
+      for (const yy of [y-h, y+h]) P.push(x0,yy,z0, x1,yy,z0, x1,yy,z1, x0,yy,z1);
+      const q = [[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]];
+      for (const [a,b2,c] of q) I.push(b+a, b+b2, b+c);
+    }
+  };
+  levels.forEach(box);
+  return {pos: Float32Array.from(P), idx: Uint32Array.from(I)};
+}
+const TOWER = {
+  s001: (S, P, N) => seTower(S, P, N),
+  s003: (S, P, N) => trTower(P, N),
+  s004: (S, P, N) => mtTower(P, N),
+  s005: (S, P, N) => scherkTower(P, N),
+  s006: (S, P, N) => kmrTower(P, N),
+};
+function towerBuild(S, P){
+  if (S.id === 's002'){ const res = S.build({...P, n: P.fl}); res.note = '002 没有水平镜像面：按周期叠加，不放楼板'; return res; }
+  const f = TOWER[S.id]; let N = P.fl;
+  // 控制总面数（约 250 万）：先用 2 层估算每层面数
+  const probe = towerFinish(f(S, P, 2), 2, S.id === 's001'), per = probe.idx.length/3/2, Nmax = Math.max(1, Math.floor(2.5e6/per));
+  if (N > Nmax){ N = Nmax; P.fl = N; toast(`这个曲面每层面数较多，最多 ${Nmax} 层`); }
+  const out = towerFinish(f(S, P, N), N, S.id === 's001');
+  if (P.sb > 0) out.slab = slabGeom(out.levels, out.foot, P.sb/MM);
+  out.note = `${N} 层 · 楼板在镜像面上${S.id === 's005' || S.id === 's006' ? ' · 已竖放' : ''}`;
+  return out;
+}
+
 /* ---------- 曲面库 ---------- */
 const TAGS = ['屋面','立面','结构','景观','可打印'];
 const CATS = [
@@ -559,7 +676,7 @@ const PALETTES = {
   sk:{front:0xBC7760, back:0x009C87, line:0x6E6E6E, op:0.55},
   km:{front:0x8FC6AB, back:0xF4D4B5, line:0x7A2620, op:0.6}
 };
-const SHARED = [['t','厚度 mm',0,3,0.1, v => v.toFixed(1), 1.0], ['op','参考图透明度',0,100,1, v => v+'%', 50]];
+const SHARED = [['fl','塔楼层数',0,40,1, v => v ? v+' 层' : '关', 0], ['sb','楼板厚 mm',0,6,0.5, v => v ? v.toFixed(1) : '无', 2], ['t','厚度 mm',0,3,0.1, v => v.toFixed(1), 1.0], ['op','参考图透明度',0,100,1, v => v+'%', 50]];
 
 const SURFACES = [
   {id:'s001', no:'001', name:'Scherk–Enneper', zh:'带周期 Enneper 端的 Scherk 鞍塔', cat:'A', end:'enneper',
@@ -578,7 +695,7 @@ const SURFACES = [
      ts = ts.concat(ts.map(t => comp({m:[1,0,0, 0,1,0, 0,0,-1], o:[0,0,2*h], f:true}, t)));
      let tr = []; for (let m=0; m<n; m++) tr = tr.concat(ts.map(t => comp({m:I3, o:[0,0,m*4*h], f:false}, t)));
      tr = tr.map(t => comp({m:[1,0,0, 0,1,0, 0,0,-1], o:[0,0,0], f:true}, t));
-     return emit(pt.pos, pt.nu*pt.nv, topo, tr);
+     const out = emit(pt.pos, pt.nu*pt.nv, topo, tr); out.h = h; return out;
    }},
   {id:'s002', no:'002', name:'Helicoidal Karcher–Scherk', zh:'螺旋运动不变的 Karcher–Scherk 鞍塔', cat:'A', end:'helicoid',
    tags:['屋面','结构','可打印'], method:'Weierstrass 数值积分 + 周期条件求解', source:'H. Karcher 1988 · M. Weber（Mathematica notebook）',
@@ -720,6 +837,7 @@ const front = new THREE.MeshLambertMaterial({side:THREE.FrontSide, polygonOffset
 const back  = new THREE.MeshLambertMaterial({side:THREE.BackSide,  polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1});
 const lineMat = new THREE.LineBasicMaterial({color:0x1b1e1a, transparent:true, opacity:0.55});
 const rimMat = new THREE.MeshLambertMaterial({side:THREE.DoubleSide});
+const slabMat = new THREE.MeshLambertMaterial({color:0xE9E4DA, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:2, polygonOffsetUnits:2});
 let group = null, cur = null, wire = true, radius = 1;
 function applyPalette(){
   const pl = PALETTES[P.pal || S.pal || 'se'];
@@ -752,7 +870,7 @@ function povDecomp(){
 function setGroupMatrix(){
   if (!group) return;
   group.matrixAutoUpdate = false;
-  if (S.pov){
+  if (S.pov && !(P.fl > 0)){
     const m = povDecomp().O;
     group.matrix.set(m[0],m[1],m[2],0, m[3],m[4],m[5],0, m[6],m[7],m[8],0, 0,0,0,1);
   } else group.matrix.identity();
@@ -760,7 +878,7 @@ function setGroupMatrix(){
 }
 
 function rebuild(){
-  const res = S.build(P);
+  const res = P.fl > 0 ? towerBuild(S, P) : S.build(P);
   if (!res){ toast('这组参数下周期条件无解，换一个扭转值试试'); return; }
   cur = res;
   let L = 0; for (let i=0; i<cur.pos.length; i++){ const v = Math.abs(cur.pos[i]); if (v > L) L = v; } cur.L = L;
@@ -785,6 +903,7 @@ function show(){
   group = new THREE.Group();
   group.add(new THREE.Mesh(g, front), new THREE.Mesh(g, back));
   if (rimG) group.add(new THREE.Mesh(rimG, rimMat));
+  if (cur.slab){ const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(cur.slab.pos, 3)); sg.setIndex(new THREE.BufferAttribute(cur.slab.idx, 1)); sg.computeVertexNormals(); group.add(new THREE.Mesh(sg, slabMat)); }
   const lines = new THREE.LineSegments(lg, lineMat); lines.visible = wire; group.add(lines);
   scene.add(group); setGroupMatrix();
   g.computeBoundingBox(); g.computeBoundingSphere();
@@ -794,10 +913,10 @@ function show(){
   if (dir.lengthSq() > 0 && radius > 0) camera.position.copy(controls.target).add(dir.multiplyScalar(newR/radius));
   radius = newR;
   camera.near = radius/100; camera.far = radius*40; camera.updateProjectionMatrix();
-  $('#stat').textContent = `${(cur.idx.length/3).toLocaleString()} 个三角面 · ${Math.round(s.x*MM)} × ${Math.round(s.z*MM)} × ${Math.round(s.y*MM)} mm${P.t > 0 ? ' · 厚 '+P.t.toFixed(1)+' mm' : ''}${cur.R ? ' · R = '+cur.R.toFixed(4) : ''}`;
+  $('#stat').textContent = `${(cur.idx.length/3).toLocaleString()} 个三角面 · ${Math.round(s.x*MM)} × ${Math.round(s.z*MM)} × ${Math.round(s.y*MM)} mm${P.t > 0 ? ' · 厚 '+P.t.toFixed(1)+' mm' : ''}${cur.R ? ' · R = '+cur.R.toFixed(4) : ''}${cur.note && P.fl > 0 ? ' · '+cur.note : ''}`;
 }
 function refView(){
-  if (S.pov){
+  if (S.pov && !(P.fl > 0)){
     const scal = P.scal || 1.1, d = 4*cur.L/scal, ty = (P.povT ?? S.povT ?? 0) * cur.L / scal, {QT} = povDecomp();
     const tgt = mv(QT, [0, -ty, 0]), eye = mv(QT, [0, 0, d]);
     controls.target.set(tgt[0], tgt[1], tgt[2]); camera.up.set(0, 1, 0);
@@ -822,7 +941,8 @@ function openSurface(x){
 }
 
 let pending = false;
-function schedule(){ if (!pending){ pending = true; requestAnimationFrame(() => { pending = false; rebuild(); }); } }
+let scheduleView = false, wasTower = false;
+function schedule(){ if (!pending){ pending = true; requestAnimationFrame(() => { pending = false; rebuild(); const t = P.fl > 0; if (scheduleView && t !== wasTower){ setGroupMatrix(); refView(); } wasTower = t; scheduleView = false; }); } }
 let pendingShow = false;
 function scheduleShow(){ if (!pendingShow){ pendingShow = true; requestAnimationFrame(() => { pendingShow = false; if (cur) show(); }); } }
 $('#rows').addEventListener('input', e => {
@@ -830,6 +950,8 @@ $('#rows').addEventListener('input', e => {
   P[k] = +e.target.value; if (S.clamp) S.clamp(P); syncUI();
   if (k === 'op'){ $('#ref').style.opacity = P.op/100; return; }
   if (k === 't'){ scheduleShow(); return; }
+  if (k === 'sb'){ if (cur && cur.levels){ cur.slab = P.sb > 0 ? slabGeom(cur.levels, cur.foot, P.sb/MM) : null; scheduleShow(); } return; }
+  if (k === 'fl'){ schedule(); scheduleView = true; return; }
   schedule();
 });
 $('#chips').addEventListener('click', e => {
@@ -919,7 +1041,9 @@ function thickDisp(){
   return {pos:O, idx, rim, lin};
 }
 function stl(){
-  const {P:Q, T} = shell(), nT = T.length/3;
+  let {P:Q, T} = shell();
+  if (cur.slab){ const off = Q.length/3, Q2 = new Float32Array(Q.length + cur.slab.pos.length); Q2.set(Q); Q2.set(cur.slab.pos, Q.length); Q = Q2; T = Array.from(T).concat(Array.from(cur.slab.idx, v => v + off)); }
+  const nT = T.length/3;
   const buf = new ArrayBuffer(84 + 50*nT), dv = new DataView(buf);
   const head = (S.name + ' (M. Weber), mm, Z up').replace(/[^\x20-\x7e]/g, '-').slice(0, 80);
   for (let i=0; i<head.length; i++) dv.setUint8(i, head.charCodeAt(i));
@@ -954,7 +1078,7 @@ if (window.claude && claude.use) claude.use('downloads').then(d => { dl = d; }).
 $('#b-stl').addEventListener('click', async () => {
   if (!cur) return;
   if (!dl){ toast('这个视图暂时不能下载，请在 claude.ai 打开本页'); return; }
-  const tag = S.no + '-' + S.spec.map(([k]) => k + P[k]).join('-') + `-t${P.t}mm`;
+  const tag = S.no + "-" + S.spec.map(([k]) => k + P[k]).join("-") + (P.fl > 0 ? `-${P.fl}F` : "") + `-t${P.t}mm`;
   try {
     await dl.save({filename:`minimal-surface-${tag}.zip`, data:zip(`minimal-surface-${tag}.stl`, stl())});
     toast('已导出 STL（zip 压缩包内）');
