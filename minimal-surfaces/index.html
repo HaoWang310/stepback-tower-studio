@@ -19,6 +19,8 @@ body.v{overflow:hidden;height:100%}
 .hero h1{margin:0;font-size:clamp(32px,5vw,48px);line-height:1.05;font-weight:600;letter-spacing:-.01em}
 .hero p{margin:10px 0 0;color:var(--mute);font-size:15px}
 .bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin:28px 0 8px}
+.tags:empty{display:none}
+.bar:has(.tags:empty){justify-content:flex-end}
 .seg{display:inline-flex;padding:3px;border:1px solid #2A2F36;border-radius:999px}
 .seg button{height:34px;padding:0 16px;border:0;border-radius:999px;background:transparent;color:#C9D1DC;font:inherit;font-size:13px;cursor:pointer}
 .seg button.on{background:var(--acc);color:#0b0d10}
@@ -1180,22 +1182,24 @@ const SURFACES = [
 SURFACES.forEach(s => { s.preset = s.presets[0]; });
 
 /* ---------- 目录首页 ---------- */
+const SHOW_TAGS = false;
 let tagOn = null, view = 'cards';
 function renderHome(){
   const list = SURFACES.filter(x => !tagOn || x.tags.includes(tagOn));
   $('#count').textContent = T('按周期性与端的类型分类 · 已收录 {n} 个曲面', {n:SURFACES.length});
-  $('#tags').innerHTML = ['全部', ...TAGS].map(t => `<button type="button" data-t="${esc(t)}" class="${(t==='全部'?!tagOn:tagOn===t)?'on':''}">${esc(T(t))}</button>`).join('');
+  // 用途标签先不显示（数据保留在 SURFACES.tags，之后要用再打开）
+  if (SHOW_TAGS) $('#tags').innerHTML = ['全部', ...TAGS].map(t => `<button type="button" data-t="${esc(t)}" class="${(t==='全部'?!tagOn:tagOn===t)?'on':''}">${esc(T(t))}</button>`).join('');
   $('#cards').innerHTML = CATS.map(c => {
     const items = list.filter(x => x.cat === c.id);
     return `<section class="cat"><h2>${c.id} · ${esc(T(c.name))} <small>${esc(T(c.desc))} · ${items.length}</small></h2>
       <div class="grid">${items.length ? items.map(x => `<button type="button" class="card" data-id="${x.id}">
         <img src="${x.thumb}" alt="${esc(T('{name} 预览', {name:T(x.name)}))}">
         <div class="meta"><div class="no">${c.id} · ${esc(T(x.sub || ENDS[x.end] || ''))} · ${x.no}</div><div class="nm">${esc(T(x.name))}</div>
-        <div class="sub">${esc(T(x.zh))}</div>${x.tags.map(t => `<span class="pill">${esc(T(t))}</span>`).join('')}</div></button>`).join('')
+        <div class="sub">${esc(T(x.zh))}</div>${SHOW_TAGS ? x.tags.map(t => `<span class="pill">${esc(T(t))}</span>`).join('') : ''}</div></button>`).join('')
         : `<div class="empty">${T('待收录')}</div>`}</div></section>`;
   }).join('');
-  $('#list').innerHTML = `<table class="stack"><thead><tr>${['编号','名称','分类','二级分类','生成方法','来源','用途标签'].map(h => `<th>${T(h)}</th>`).join('')}</tr></thead><tbody>${
-    list.map(x => `<tr><td>${x.no}</td><td><a href="#${x.id}">${esc(T(x.name))}</a></td><td>${x.cat} · ${esc(T(CATS.find(c=>c.id===x.cat).name))}</td><td>${esc(T(x.sub || ENDS[x.end] || ''))}</td><td>${esc(T(x.method))}</td><td>${esc(T(x.source))}</td><td>${x.tags.map(t => esc(T(t))).join(' · ')}</td></tr>`).join('')
+  $('#list').innerHTML = `<table class="stack"><thead><tr>${['编号','名称','分类','二级分类','生成方法','来源', ...(SHOW_TAGS ? ['用途标签'] : [])].map(h => `<th>${T(h)}</th>`).join('')}</tr></thead><tbody>${
+    list.map(x => `<tr><td>${x.no}</td><td><a href="#${x.id}">${esc(T(x.name))}</a></td><td>${x.cat} · ${esc(T(CATS.find(c=>c.id===x.cat).name))}</td><td>${esc(T(x.sub || ENDS[x.end] || ''))}</td><td>${esc(T(x.method))}</td><td>${esc(T(x.source))}</td>${SHOW_TAGS ? `<td>${x.tags.map(t => esc(T(t))).join(' · ')}</td>` : ''}</tr>`).join('')
   }</tbody></table>`;
 }
 $('#tags').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; tagOn = b.dataset.t === '全部' ? null : b.dataset.t; renderHome(); });
