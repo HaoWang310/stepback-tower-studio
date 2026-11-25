@@ -65,6 +65,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 #toast.show{opacity:1}
 #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--t2);text-align:center;padding:30px}
 .hidden{display:none!important}
+.head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sec h2 b{font-weight:500}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .chips button{min-width:34px;border:0.5px solid #48484a;background:transparent;color:var(--t2);font:inherit;font-size:12px;padding:5px 0;border-radius:8px;cursor:pointer}
 .chips button.on{background:var(--t1);color:#000;border-color:var(--t1)}
@@ -78,91 +80,91 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 <body>
 <div id="app">
   <aside id="panel">
-    <h1>单体塔楼生成器</h1>
-    <p class="sub">输入一个单体 STL，按建筑测试.gh 的逻辑叠层、收腰、扭转。</p>
+    <div class="head"><h1 data-i18n="title">单体塔楼生成器</h1><div class="seg" id="segLang"><button data-v="zh">中</button><button data-v="en">EN</button></div></div>
+    <p class="sub" data-i18n="sub"></p>
 
     <div class="sec">
-      <h2>输入 <span id="fname">示例楼板</span></h2>
-      <div id="drop"><b>拖入 STL 单体</b><br>或点击选择文件</div>
+      <h2><b data-i18n="secInput"></b> <span id="fname"></span></h2>
+      <div id="drop" data-i18n-html="drop"></div>
       <input id="file" type="file" accept=".stl,model/stl" hidden>
       <div class="info" id="info"></div>
-      <div class="row"><label>单位</label>
+      <div class="row"><label data-i18n="units"></label>
         <div class="seg" id="segUnit"><button data-v="0.001">mm</button><button data-v="0.01">cm</button><button data-v="1">m</button></div></div>
-      <div class="row"><label>竖向轴</label>
+      <div class="row"><label data-i18n="upAxis"></label>
         <div class="seg" id="segUp"><button data-v="z" class="on">Z</button><button data-v="y">Y</button></div></div>
-      <div><button class="link" id="btnUnit">示例单体</button> <button class="link" id="btnSample" style="margin-left:12px">示例楼板</button></div>
+      <div><button class="link" id="btnUnit" data-i18n="btnUnit"></button> <button class="link" id="btnSample" style="margin-left:12px" data-i18n="btnSample"></button></div>
     </div>
 
     <div class="sec" id="secThick">
-      <h2>加厚 <span>两侧各一半 · 自动统一法线</span></h2>
-      <div class="row"><label>厚度</label><span><input class="num" id="nThick" type="number" step="0.01"><span class="unit">m</span></span></div>
+      <h2><b data-i18n="secThick"></b> <span data-i18n="thickNote"></span></h2>
+      <div class="row"><label data-i18n="thickness"></label><span><input class="num" id="nThick" type="number" step="0.01"><span class="unit">m</span></span></div>
       <input type="range" id="rThick" min="0.01" max="1" step="0.01">
     </div>
 
     <div class="sec">
-      <h2>叠层</h2>
-      <div class="row"><label>层数</label><span><input class="num" id="nCount" type="number" step="1"></span></div>
+      <h2 data-i18n="secStack"></h2>
+      <div class="row"><label data-i18n="floors"></label><span><input class="num" id="nCount" type="number" step="1"></span></div>
       <input type="range" id="rCount" min="1" max="120" step="1">
-      <div class="row"><label>净高</label><span><input class="num" id="nGap" type="number" step="0.1"><span class="unit">m</span></span></div>
+      <div class="row"><label data-i18n="gap"></label><span><input class="num" id="nGap" type="number" step="0.1"><span class="unit">m</span></span></div>
       <input type="range" id="rGap" min="0" max="12" step="0.1">
       <div class="read" id="readStack"></div>
     </div>
 
     <div class="sec">
-      <h2>收腰</h2>
-      <div class="row"><label>最细比例</label><span><input class="num" id="nMin" type="number" step="0.01"></span></div>
+      <h2 data-i18n="secWaist"></h2>
+      <div class="row"><label data-i18n="minR"></label><span><input class="num" id="nMin" type="number" step="0.01"></span></div>
       <input type="range" id="rMin" min="0.2" max="1.5" step="0.01">
-      <div class="row"><label>曲线</label>
-        <div class="seg" id="segCurve"><button data-v="linear" class="on">线性</button><button data-v="smooth">平滑</button></div></div>
+      <div class="row"><label data-i18n="curve"></label>
+        <div class="seg" id="segCurve"><button data-v="linear" class="on" data-i18n="linear"></button><button data-v="smooth" data-i18n="smooth"></button></div></div>
       <div class="read" id="readWaist"></div>
     </div>
 
     <div class="sec">
-      <h2>扭转</h2>
-      <div class="row"><label>每层角度</label><span><input class="num" id="nRot" type="number" step="0.5"><span class="unit">°</span></span></div>
+      <h2 data-i18n="secTwist"></h2>
+      <div class="row"><label data-i18n="step"></label><span><input class="num" id="nRot" type="number" step="0.5"><span class="unit">°</span></span></div>
       <input type="range" id="rRot" min="-90" max="90" step="0.5">
-      <div class="row"><label>基点</label>
-        <div class="seg" id="segPivot"><button data-v="centroid" class="on">质心</button><button data-v="bbox">包围盒中心</button></div></div>
+      <div class="row"><label data-i18n="pivot"></label>
+        <div class="seg" id="segPivot"><button data-v="centroid" class="on" data-i18n="centroid"></button><button data-v="bbox" data-i18n="bboxc"></button></div></div>
       <div class="read" id="readTwist"></div>
     </div>
 
     <div class="sec" id="secPrint">
-      <h2>打印分件 <span>Bambu Lab A1 · 256 mm</span></h2>
-      <div class="row"><label>比例</label>
+      <h2><b data-i18n="secPrint"></b> <span>Bambu Lab A1 · 256 mm</span></h2>
+      <div class="row"><label data-i18n="scale"></label>
         <div class="seg" id="segScale"><button data-v="300">1:300</button><button data-v="500" class="on">1:500</button><button data-v="750">1:750</button><button data-v="1000">1:1000</button></div></div>
-      <div class="row"><label>打印壁厚</label><span><input class="num" id="nWall" type="number" step="0.1"><span class="unit">mm</span></span></div>
+      <div class="row"><label data-i18n="wall"></label><span><input class="num" id="nWall" type="number" step="0.1"><span class="unit">mm</span></span></div>
       <input type="range" id="rWall" min="0.4" max="3" step="0.1">
-      <div class="row"><label>层号</label>
-        <div class="seg" id="segLabel"><button data-v="1" class="on">压凸字</button><button data-v="0">不压</button></div></div>
-      <div class="row"><label>盘边留白</label><span><input class="num" id="nMargin" type="number" step="1" style="width:40px"><span class="unit">mm</span></span></div>
-      <div class="row"><label>零件间距</label><span><input class="num" id="nGapP" type="number" step="1" style="width:40px"><span class="unit">mm</span></span></div>
+      <div class="row"><label data-i18n="labels"></label>
+        <div class="seg" id="segLabel"><button data-v="1" class="on" data-i18n="emboss"></button><button data-v="0" data-i18n="noEmboss"></button></div></div>
+      <div class="row"><label data-i18n="margin"></label><span><input class="num" id="nMargin" type="number" step="1" style="width:40px"><span class="unit">mm</span></span></div>
+      <div class="row"><label data-i18n="gapP"></label><span><input class="num" id="nGapP" type="number" step="1" style="width:40px"><span class="unit">mm</span></span></div>
       <div class="read" id="readPrint"></div>
-      <div class="row"><label>预览第</label><span><input class="num" id="nPrev" type="number" step="1" value="1" style="width:40px"><span class="unit">层分件</span></span></div>
+      <div class="row"><label data-i18n="prevFloor"></label><span><input class="num" id="nPrev" type="number" step="1" value="1" style="width:40px"><span class="unit" data-i18n="prevUnit"></span></span></div>
       <div class="btns" style="grid-template-columns:1fr 1fr;margin-top:12px">
-        <button class="btn" id="btnPrev">预览分件</button>
-        <button class="btn" id="btnPlates">排盘预览</button>
+        <button class="btn" id="btnPrev" data-i18n="btnPrev"></button>
+        <button class="btn" id="btnPlates" data-i18n="btnPlates"></button>
       </div>
       <div id="plateChips" class="chips hidden"></div>
-      <button class="btn primary" id="btnPrint" style="width:100%;margin-top:8px">导出 ZIP</button>
+      <button class="btn primary" id="btnPrint" style="width:100%;margin-top:8px" data-i18n="btnPrint"></button>
     </div>
 
     <div class="sec">
-      <h2>导出 <span id="expInfo"></span></h2>
+      <h2><b data-i18n="secExport"></b> <span id="expInfo"></span></h2>
       <div class="btns">
         <button class="btn primary" id="exSTL">STL</button>
         <button class="btn" id="exOBJ">OBJ</button>
         <button class="btn" id="ex3DM">3DM</button>
       </div>
-      <div class="read" id="readExport">导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。</div>
-      <button class="link" id="btnReset">恢复 gh 默认参数</button>
+      <div class="read" id="readExport"></div>
+      <button class="link" id="btnReset" data-i18n="reset"></button>
     </div>
   </aside>
 
   <main id="view">
     <canvas id="gl"></canvas>
-    <div id="tools"><button id="btnFit">重置视角</button></div>
+    <div id="tools"><button id="btnFit" data-i18n="fit"></button></div>
     <div id="toast"></div>
-    <div id="hud"><div class="a" id="hudA"></div><div class="b">拖动旋转 · 右键或 Shift 平移 · 滚轮缩放</div></div>
+    <div id="hud"><div class="a" id="hudA"></div><div class="b" data-i18n="hint"></div></div>
     <div id="err"></div>
   </main>
 </div>
@@ -826,7 +828,7 @@ const Core = (() => {
     for (const it of order) {
       let placed = false;
       for (const p of plates) if (tryPlace(p, it)) { placed = true; break; }
-      if (!placed && !tryPlace(newPlate(), it)) throw new Error(it.name + ' 放不进打印盘');
+      if (!placed && !tryPlace(newPlate(), it)) { const e = new Error(it.name); e.code = 'nofit'; throw e; }
     }
     return plates.map(p => p.list.sort((a, b) => natCmp(a.name, b.name)));
   }
@@ -881,15 +883,18 @@ const Core = (() => {
   // assembly sheet: one card per floor (label, angle, scale), black background
   function assemblySVG(info) {
     const { floors: fl, scaleDen, wall, title, plates } = info;
+    const T = info.text || {};
+    const tt = (k, v) => { let s = T[k] || k; if (v) for (const n in v) s = s.split('{' + n + '}').join(v[n]); return s; };
+    const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     const cols = 8, cw = 150, ch = 150, pad = 30, top = 120;
     const rows = Math.ceil(fl.length / cols);
     const Wd = pad * 2 + cols * cw, Hd = top + rows * ch + pad + 40 + plates.length * 18;
     const t = [];
     t.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${Wd}" height="${Hd}" viewBox="0 0 ${Wd} ${Hd}" font-family="DM Sans, PingFang SC, sans-serif">`);
     t.push(`<rect width="${Wd}" height="${Hd}" fill="#000"/>`);
-    t.push(`<text x="${pad}" y="48" fill="#F5F5F7" font-size="24" font-weight="500">${title} · 组装图</text>`);
-    t.push(`<text x="${pad}" y="78" fill="#8E8E93" font-size="14">1:${scaleDen} · 打印壁厚 ${wall} mm · 每层两片：N-1 上半（翻面打印，组装时翻回）、N-2 下半 · 从下往上按层号粘合</text>`);
-    t.push(`<text x="${pad}" y="100" fill="#8E8E93" font-size="14">角度为相对第 1 层逆时针旋转（俯视），橙线为第 1 层的十字臂方向</text>`);
+    t.push(`<text x="${pad}" y="48" fill="#F5F5F7" font-size="24" font-weight="500">${esc(tt('gTitle', { t: title }))}</text>`);
+    t.push(`<text x="${pad}" y="78" fill="#8E8E93" font-size="14">${esc(tt('gLine1', { s: scaleDen, w: wall }))}</text>`);
+    t.push(`<text x="${pad}" y="100" fill="#8E8E93" font-size="14">${esc(tt('gLine2'))}</text>`);
     fl.forEach((f, i) => {
       const x = pad + (i % cols) * cw, y = top + Math.floor(i / cols) * ch;
       const cx = x + cw / 2, cy = y + 62, a = f.angle % 360;
@@ -898,13 +903,13 @@ const Core = (() => {
       const r = 38 * f.s;
       t.push(`<g transform="rotate(${-a} ${cx} ${cy})"><rect x="${cx - r}" y="${cy - r * 0.16}" width="${2 * r}" height="${r * 0.32}" fill="none" stroke="#F5F5F7" stroke-width="1.4"/><rect x="${cx - r * 0.16}" y="${cy - r}" width="${r * 0.32}" height="${2 * r}" fill="none" stroke="#F5F5F7" stroke-width="1.4"/></g>`);
       t.push(`<text x="${x + 14}" y="${y + 26}" fill="#F5F5F7" font-size="18" font-weight="500">${f.no}</text>`);
-      t.push(`<text x="${x + cw - 14}" y="${y + 26}" fill="#8E8E93" font-size="12" text-anchor="end">盘 ${f.plate}</text>`);
+      t.push(`<text x="${x + cw - 14}" y="${y + 26}" fill="#8E8E93" font-size="12" text-anchor="end">${esc(tt('gPlate', { p: f.plate }))}</text>`);
       t.push(`<text x="${cx}" y="${y + 122}" fill="#F5F5F7" font-size="13" text-anchor="middle">${+f.angle.toFixed(1)}° · ×${f.s.toFixed(2)}</text>`);
-      t.push(`<text x="${cx}" y="${y + 138}" fill="#8E8E93" font-size="11" text-anchor="middle">${f.no}-1 上 · ${f.no}-2 下</text>`);
+      t.push(`<text x="${cx}" y="${y + 138}" fill="#8E8E93" font-size="11" text-anchor="middle">${esc(tt('gPair', { n: f.no }))}</text>`);
     });
     const py = top + rows * ch + pad;
-    t.push(`<text x="${pad}" y="${py}" fill="#F5F5F7" font-size="15" font-weight="500">打印盘分配（A1 · 256 × 256 mm）</text>`);
-    plates.forEach((p, i) => t.push(`<text x="${pad}" y="${py + 24 + i * 18}" fill="#8E8E93" font-size="13">盘 ${i + 1}：${p.join('、')}</text>`));
+    t.push(`<text x="${pad}" y="${py}" fill="#F5F5F7" font-size="15" font-weight="500">${esc(tt('gPlates'))}</text>`);
+    plates.forEach((p, i) => t.push(`<text x="${pad}" y="${py + 24 + i * 18}" fill="#8E8E93" font-size="13">${esc(tt('gPlateLine', { i: i + 1, list: p.join(T.sep || '、') }))}</text>`));
     t.push('</svg>');
     return t.join('\n');
   }
@@ -919,12 +924,110 @@ if (typeof module !== 'undefined') module.exports = Core;
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
+// ---------- language (follows the browser / system, remembers the last manual choice) ----------
+const I18N = {
+  zh: {
+    docTitle: '单体塔楼生成器 · Unit Tower', title: '单体塔楼生成器', sub: '输入一个单体 STL，按建筑测试.gh 的逻辑叠层、收腰、扭转。',
+    secInput: '输入', drop: '<b>拖入 STL 单体</b><br>或点击选择文件', units: '单位', upAxis: '竖向轴', btnUnit: '示例单体', btnSample: '示例楼板',
+    secThick: '加厚', thickNote: '两侧各一半 · 自动统一法线', thickness: '厚度',
+    secStack: '叠层', floors: '层数', gap: '净高', secWaist: '收腰', minR: '最细比例', curve: '曲线', linear: '线性', smooth: '平滑',
+    secTwist: '扭转', step: '每层角度', pivot: '基点', centroid: '质心', bboxc: '包围盒中心',
+    secPrint: '打印分件', scale: '比例', wall: '打印壁厚', labels: '层号', emboss: '压凸字', noEmboss: '不压',
+    margin: '盘边留白', gapP: '零件间距', prevFloor: '预览第', prevUnit: '层分件',
+    btnPrev: '预览分件', btnPlates: '排盘预览', back: '返回塔楼', btnPrint: '导出 ZIP',
+    secExport: '导出', exportNote: '导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。', reset: '恢复 gh 默认参数',
+    fit: '重置视角', hint: '拖动旋转 · 右键或 Shift 平移 · 滚轮缩放',
+    faces: '面', stClosed: '闭合实体 · 直接使用', stNonManifold: '非流形网格 · 无法加厚，按原样使用', stOpen: '开放面 · 已两侧加厚成实体',
+    unified: '已统一法线：翻转 {n} 个面', twistSewn: '；{n} 条扭转边已缝合',
+    readStack: '层距 {h} + {g} = {p} m · 总高 {H} m', waistFew: '层数太少，不收腰', waistTwo: '第 {a}、{b} 层', waistOne: '第 {a} 层',
+    waist: '最细处 {m} · 比例 {r}', twistRead: '顶层累计 {d}° · 约 {t} 圈',
+    stlBig: 'STL 约 {mb} MB，面数较多，导出可能较慢。', stlKB: 'STL 约 {kb} KB。', stlMB: 'STL 约 {mb} MB。',
+    hud: '{n} 层 · 总高 {H} m · 扭转 {d}°',
+    printClosed: '分件需要开放面单体（闭合实体暂不支持切半）', print1: '每层切成上下两半（单体中线），上半翻面打印',
+    print2: '单片 {a}–{b} mm 见方 · 高约 {h} mm', pieces: '{n} 片', platesDone: '{n} 盘（按轮廓排好）', platesTodo: '盘数点“排盘预览”计算',
+    wallReal: '壁厚相当于真实 {w} m', tooBig: '最大单片超过 {mm} mm，放不进 A1，请换小一点的比例',
+    progOutline: '轮廓 {i}/{n}', progPack: '排盘…', generating: '生成中…',
+    hudPlate: '盘 {n} / {N} · {list}', noLabel: ' · {list} 层号放不下',
+    hudPieces: '第 {n} 层分件 · 左 {n}-1 上半（已翻面）· 右 {n}-2 下半 · 单位 mm', noLabelShort: ' · 层号放不下',
+    notStl: '没读到三角面，请确认是 STL 文件', loaded: '已载入 {name} · 单位 {u}', loadedGap0: ' · 单体为整层高，净高设为 0', loadedEnd: '，可在左侧修改',
+    sampleNeedsWeb: '示例单体需要在网页上打开，已载入示例楼板',
+    packFail: '排盘失败：', prevFail: '预览失败：', exportFail: '导出失败：', noFit: '{name} 放不进打印盘',
+    plateProg: '盘 {i}/{n}', zipping: '打包…', exported: '已导出 {p} 盘 · {n} 片', exportedMissing: ' · {n} 片层号放不下',
+    rhinoLoad: '正在加载 Rhino 库…', rhinoFail: '无法加载 rhino3dm（需要联网）', noWebgl: '浏览器不支持 WebGL2，无法预览（导出仍可用）',
+    sampleSlab: '示例楼板', sampleUnit: '示例单体',
+    folder: '打印件', fPlates: '按盘', fPieces: '单片', plateFile: '盘', guideFile: '组装图.svg', notesFile: '说明.txt', sep: '、',
+    gTitle: '{t} · 组装图', gLine1: '1:{s} · 打印壁厚 {w} mm · 每层两片：N-1 上半（翻面打印，组装时翻回）、N-2 下半 · 从下往上按层号粘合',
+    gLine2: '角度为相对第 1 层逆时针旋转（俯视），橙线为第 1 层的十字臂方向', gPlate: '盘 {p}', gPair: '{n}-1 上 · {n}-2 下',
+    gPlates: '打印盘分配（A1 · 256 × 256 mm）', gPlateLine: '盘 {i}：{list}',
+    n1: '单体塔楼 · 打印分件', n2: '比例 1:{s} · 打印壁厚 {w} mm（相当于真实 {r} m）· 单位 mm',
+    n3: '每层切成上下两半：N-1 = 上半（已翻面，平面朝下打印，组装时翻回），N-2 = 下半', n4: '层号凸字在臂内槽底，组装后被盖住',
+    n5: '扭转：每层相对下一层 {d}°（逆时针，俯视），见 {g}', n6: '{f}/：每盘一个 STL，零件已排好（盘边 {m} mm，间距 {gp} mm，A1 256 × 256 mm）。',
+    n7: '在 Bambu Studio 里每个文件导入一个盘；需要单独调整时右键“拆分为对象”。', n8: '{f}/：每片单独的 STL，文件名即层号。',
+    n9: '打印盘分配：', n10: '以下零件放不下层号：{list}',
+  },
+  en: {
+    docTitle: 'Unit Tower', title: 'Unit Tower', sub: 'Load one unit as STL and stack it into a tower with the logic of the Grasshopper file 建筑测试.gh: stacking, waist and twist.',
+    secInput: 'Input', drop: '<b>Drop an STL unit</b><br>or click to choose a file', units: 'Units', upAxis: 'Up axis', btnUnit: 'Sample unit', btnSample: 'Sample slab',
+    secThick: 'Thicken', thickNote: 'half on each side · normals unified', thickness: 'Thickness',
+    secStack: 'Stacking', floors: 'Floors', gap: 'Clear height', secWaist: 'Waist', minR: 'Narrowest scale', curve: 'Curve', linear: 'Linear', smooth: 'Smooth',
+    secTwist: 'Twist', step: 'Per floor', pivot: 'Pivot', centroid: 'Centroid', bboxc: 'Box centre',
+    secPrint: 'Print parts', scale: 'Scale', wall: 'Print wall', labels: 'Floor labels', emboss: 'Raised', noEmboss: 'None',
+    margin: 'Plate margin', gapP: 'Part spacing', prevFloor: 'Preview floor', prevUnit: '',
+    btnPrev: 'Preview parts', btnPlates: 'Preview plates', back: 'Back to tower', btnPrint: 'Export ZIP',
+    secExport: 'Export', exportNote: 'Exports use the file’s own units; OBJ and 3DM have one object per floor.', reset: 'Reset to gh defaults',
+    fit: 'Reset view', hint: 'Drag to orbit · right-drag or Shift to pan · scroll to zoom',
+    faces: 'triangles', stClosed: 'Closed solid · used as is', stNonManifold: 'Non-manifold mesh · cannot thicken, used as is', stOpen: 'Open surface · thickened on both sides into a solid',
+    unified: 'Normals unified: {n} faces flipped', twistSewn: '; {n} twisted edges stitched',
+    readStack: 'Floor pitch {h} + {g} = {p} m · height {H} m', waistFew: 'Too few floors for a waist', waistTwo: 'floors {a} and {b}', waistOne: 'floor {a}',
+    waist: 'Narrowest at {m} · scale {r}', twistRead: 'Top floor {d}° · about {t} turns',
+    stlBig: 'STL about {mb} MB — many triangles, export may be slow.', stlKB: 'STL about {kb} KB.', stlMB: 'STL about {mb} MB.',
+    hud: '{n} floors · height {H} m · twist {d}°',
+    printClosed: 'Print parts need an open-surface unit (closed solids cannot be cut in half yet)', print1: 'Each floor is cut in half at mid-height; the upper half prints flipped',
+    print2: 'Pieces {a}–{b} mm across · about {h} mm tall', pieces: '{n} pieces', platesDone: '{n} plates (packed by outline)', platesTodo: 'click “Preview plates” for the plate count',
+    wallReal: 'wall ≈ {w} m real', tooBig: 'The largest piece is over {mm} mm and does not fit the A1 — choose a smaller scale',
+    progOutline: 'Outline {i}/{n}', progPack: 'Packing…', generating: 'Generating…',
+    hudPlate: 'Plate {n} / {N} · {list}', noLabel: ' · no room for label: {list}',
+    hudPieces: 'Floor {n} parts · left {n}-1 upper half (flipped) · right {n}-2 lower half · mm', noLabelShort: ' · no room for label',
+    notStl: 'No triangles found — is this an STL file?', loaded: 'Loaded {name} · units {u}', loadedGap0: ' · full-storey unit, clear height set to 0', loadedEnd: ' (change on the left)',
+    sampleNeedsWeb: 'The sample unit needs the web page; loaded the sample slab instead',
+    packFail: 'Packing failed: ', prevFail: 'Preview failed: ', exportFail: 'Export failed: ', noFit: '{name} does not fit on a plate',
+    plateProg: 'Plate {i}/{n}', zipping: 'Zipping…', exported: 'Exported {p} plates · {n} pieces', exportedMissing: ' · {n} pieces without label',
+    rhinoLoad: 'Loading the Rhino library…', rhinoFail: 'Could not load rhino3dm (needs internet)', noWebgl: 'This browser has no WebGL2 — no preview (export still works)',
+    sampleSlab: 'Sample slab', sampleUnit: 'Sample unit',
+    folder: 'print-parts', fPlates: 'plates', fPieces: 'pieces', plateFile: 'plate', guideFile: 'assembly.svg', notesFile: 'readme.txt', sep: ', ',
+    gTitle: '{t} · assembly', gLine1: '1:{s} · print wall {w} mm · two pieces per floor: N-1 upper half (printed flipped, turn it back), N-2 lower half · glue bottom-up by floor number',
+    gLine2: 'Angles are anticlockwise from floor 1 (plan view); orange lines show the arm directions of floor 1', gPlate: 'plate {p}', gPair: '{n}-1 upper · {n}-2 lower',
+    gPlates: 'Plates (A1 · 256 × 256 mm)', gPlateLine: 'Plate {i}: {list}',
+    n1: 'Unit Tower · print parts', n2: 'Scale 1:{s} · print wall {w} mm (≈ {r} m real) · units mm',
+    n3: 'Each floor is cut in half: N-1 = upper half (flipped, flat side down; turn it back when assembling), N-2 = lower half', n4: 'Raised floor labels sit on the trough floor inside an arm and are hidden once assembled',
+    n5: 'Twist: {d}° per floor relative to the one below (anticlockwise, plan view), see {g}', n6: '{f}/: one STL per plate, pieces already placed (margin {m} mm, spacing {gp} mm, A1 256 × 256 mm).',
+    n7: 'In Bambu Studio import one file per plate; right-click “Split to objects” to adjust single pieces.', n8: '{f}/: one STL per piece, named by floor label.',
+    n9: 'Plates:', n10: 'No room for a label on: {list}',
+  },
+};
+const LANG_KEY = 'unitTower.lang';
+let LANG = (() => {
+  try { const v = localStorage.getItem(LANG_KEY); if (v === 'zh' || v === 'en') return v; } catch (e) {}
+  const langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ''];
+  return /^zh/i.test(langs[0] || '') ? 'zh' : 'en';
+})();
+const t = (k, v) => { let s = (I18N[LANG][k] ?? I18N.zh[k] ?? k); if (v) for (const n in v) s = s.split('{' + n + '}').join(v[n]); return s; };
+const errText = e => e && e.code === 'nofit' ? t('noFit', { name: e.message }) : (e && e.message) || String(e);
+function applyStatic() {
+  document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+  document.title = t('docTitle');
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll('[data-i18n-html]')) el.innerHTML = t(el.dataset.i18nHtml);
+  for (const b of document.querySelectorAll('#segLang button')) b.classList.toggle('on', b.dataset.v === LANG);
+}
+
 const GH = { count: 40, gap: 3.6, minR: 0.62, curve: 'linear', step: 22.5, thick: 0.1, pivot: 'centroid' };
 const S = Object.assign({ unit: 1, upY: false }, GH);
 const PR = { den: 500, wall: 1.2, labels: true, preview: 0, margin: 10, gap: 6, plate: 0 };
 let packCache = null;
 let halves = null;
-let raw = null, fileName = '示例楼板', baseMesh = null, geo = null;
+let raw = null, fileName = '', sampleKind = 'slab', baseMesh = null, geo = null;
+const dispName = () => sampleKind ? t(sampleKind === 'slab' ? 'sampleSlab' : 'sampleUnit') : fileName;
 
 // ---------- geometry state ----------
 function rebuild() {
@@ -956,21 +1059,22 @@ function params() {
 }
 
 // ---------- UI ----------
-const fmt = (v, d = 2) => (+v.toFixed(d)).toLocaleString('zh-CN', { maximumFractionDigits: d });
+const fmt = (v, d = 2) => (+v.toFixed(d)).toLocaleString(LANG === 'zh' ? 'zh-CN' : 'en-GB', { maximumFractionDigits: d });
+const trisText = n => LANG === 'zh' ? `${(n / 1e4).toFixed(n > 1e5 ? 0 : 1)} 万面` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} M triangles` : `${Math.round(n / 1e3)} k triangles`;
 function updateInfo() {
   const u = S.unit, s = geo.bb.size;
   const es = geo.es;
-  const state = es.closed ? '闭合实体 · 直接使用'
-    : es.nonManifold ? '<span class="warn">非流形网格 · 无法加厚，按原样使用</span>'
-    : '开放面 · 已两侧加厚成实体';
+  const state = es.closed ? t('stClosed')
+    : es.nonManifold ? `<span class="warn">${t('stNonManifold')}</span>`
+    : t('stOpen');
   const fix = geo.thick && geo.thick.before
-    ? `<br><span class="dot"></span>已统一法线：翻转 ${geo.thick.flipped.toLocaleString()} 个面` + (geo.thick.twist ? `；${geo.thick.twist} 条扭转边已缝合` : '')
+    ? `<br><span class="dot"></span>` + t('unified', { n: geo.thick.flipped.toLocaleString() }) + (geo.thick.twist ? t('twistSewn', { n: geo.thick.twist }) : '')
     : '';
   $('info').innerHTML =
-    `${fmt(s[0] * u)} × ${fmt(s[1] * u)} × ${fmt(s[2] * u, 3)} m · ${(baseMesh.F.length / 3).toLocaleString()} 面<br>` +
+    `${fmt(s[0] * u)} × ${fmt(s[1] * u)} × ${fmt(s[2] * u, 3)} m · ${(baseMesh.F.length / 3).toLocaleString()} ${t('faces')}<br>` +
     `<span class="dot"></span>${state}${fix}`;
   $('secThick').classList.toggle('hidden', !geo.thick);
-  $('fname').textContent = fileName.length > 22 ? fileName.slice(0, 20) + '…' : fileName;
+  { const n = dispName(); $('fname').textContent = n.length > 22 ? n.slice(0, 20) + '…' : n; }
 }
 
 function update(refit) {
@@ -978,21 +1082,21 @@ function update(refit) {
   const fl = Core.floors(p);
   const u = S.unit;
   const H = ((S.count - 1) * p.pitch + geo.h) * u;
-  $('readStack').textContent = `层距 ${fmt(geo.h * u, 3)} + ${fmt(S.gap, 2)} = ${fmt(p.pitch * u, 3)} m · 总高 ${fmt(H, 1)} m`;
+  $('readStack').textContent = t('readStack', { h: fmt(geo.h * u, 3), g: fmt(S.gap, 2), p: fmt(p.pitch * u, 3), H: fmt(H, 1) });
   const kmax = Math.floor((S.count - 1) / 2);
-  const mids = S.count % 2 === 0 && S.count > 1 ? `第 ${S.count / 2}、${S.count / 2 + 1} 层` : `第 ${kmax + 1} 层`;
-  $('readWaist').textContent = S.count < 3 ? '层数太少，不收腰' : `最细处 ${mids} · 比例 ${fmt(S.minR, 2)}`;
-  $('readTwist').textContent = `顶层累计 ${fmt((S.count - 1) * S.step, 1)}° · 约 ${fmt(Math.abs((S.count - 1) * S.step) / 360, 2)} 圈`;
+  const mids = S.count % 2 === 0 && S.count > 1 ? t('waistTwo', { a: S.count / 2, b: S.count / 2 + 1 }) : t('waistOne', { a: kmax + 1 });
+  $('readWaist').textContent = S.count < 3 ? t('waistFew') : t('waist', { m: mids, r: fmt(S.minR, 2) });
+  $('readTwist').textContent = t('twistRead', { d: fmt((S.count - 1) * S.step, 1), t: fmt(Math.abs((S.count - 1) * S.step) / 360, 2) });
   const tris = geo.F.length / 3 * S.count;
   const mb = (84 + tris * 50) / 1048576;
-  $('expInfo').textContent = `${(tris / 1e4).toFixed(tris > 1e5 ? 0 : 1)} 万面`;
-  $('readExport').innerHTML = (mb > 300 ? `<span class="warn">STL 约 ${fmt(mb, 0)} MB，面数较多，导出可能较慢。</span><br>` : mb < 1 ? `STL 约 ${fmt(mb * 1024, 0)} KB。` : `STL 约 ${fmt(mb, 1)} MB。`) +
-    '导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。';
-  $('hudA').textContent = `${S.count} 层 · 总高 ${fmt(H, 1)} m · 扭转 ${fmt((S.count - 1) * S.step, 1)}°`;
+  $('expInfo').textContent = trisText(tris);
+  $('readExport').innerHTML = (mb > 300 ? `<span class="warn">${t('stlBig', { mb: fmt(mb, 0) })}</span><br>` : (mb < 1 ? t('stlKB', { kb: fmt(mb * 1024, 0) }) : t('stlMB', { mb: fmt(mb, 1) })) + ' ') +
+    t('exportNote');
+  $('hudA').textContent = t('hud', { n: S.count, H: fmt(H, 1), d: fmt((S.count - 1) * S.step, 1) });
   updatePrint(fl, p);
   if (PR.preview || PR.plate) { PR.preview = 0; PR.plate = 0; R.setPlate(null); R.upload(geo); refit = true; }
-  $('btnPrev').textContent = '预览分件';
-  $('btnPlates').textContent = '排盘预览';
+  $('btnPrev').textContent = t('btnPrev');
+  $('btnPlates').textContent = t('btnPlates');
   renderChips();
   R.setFloors(fl, geo, p);
   if (refit) R.fit();
@@ -1029,14 +1133,14 @@ function plan(fl) {
 function updatePrint(fl) {
   const ok = !geo.es.closed && geo.thick;
   $('btnPrev').disabled = $('btnPrint').disabled = $('btnPlates').disabled = !ok;
-  if (!ok) { $('readPrint').innerHTML = '<span class="warn">分件需要开放面单体（闭合实体暂不支持切半）</span>'; return; }
+  if (!ok) { $('readPrint').innerHTML = `<span class="warn">${t('printClosed')}</span>`; return; }
   const pl = plan(fl);
   const wReal = PR.wall * PR.den / 1000;
   $('readPrint').innerHTML =
-    `每层切成上下两半（单体中线），上半翻面打印<br>` +
-    `单片 ${fmt(pl.maxD, 0)}–${fmt(pl.minD, 0)} mm 见方 · 高约 ${fmt(pl.halfH, 1)} mm<br>` +
-    `${S.count * 2} 片 · ` + (packCache && packCache.key === packKey() ? `${packCache.plates.length} 盘（按轮廓排好）` : '盘数点"排盘预览"计算') + ` · 壁厚相当于真实 ${fmt(wReal, 2)} m` +
-    (pl.fits ? '' : `<br><span class="warn">最大单片超过 ${PLATE - 2 * MARGIN} mm，放不进 A1，请换小一点的比例</span>`);
+    t('print1') + '<br>' +
+    t('print2', { a: fmt(pl.maxD, 0), b: fmt(pl.minD, 0), h: fmt(pl.halfH, 1) }) + '<br>' +
+    t('pieces', { n: S.count * 2 }) + ' · ' + (packCache && packCache.key === packKey() ? t('platesDone', { n: packCache.plates.length }) : t('platesTodo')) + ' · ' + t('wallReal', { w: fmt(wReal, 2) }) +
+    (pl.fits ? '' : `<br><span class="warn">${t('tooBig', { mm: PLATE - 2 * MARGIN })}</span>`);
   $('nPrev').max = S.count;
 }
 function packKey() {
@@ -1048,14 +1152,14 @@ async function ensurePacked(progress) {
   const fl = Core.floors(params()), hv = getHalves(), k = printFactor(), dil = PR.wall / 2 + PR.gap / 2;
   const items = [];
   for (let i = 0; i < fl.length; i++) {
-    if (progress) progress(`轮廓 ${i + 1}/${fl.length}`);
+    if (progress) progress(t('progOutline', { i: i + 1, n: fl.length }));
     await new Promise(r => setTimeout(r, 0));
     for (const [part, flip, tag] of [[hv.hi, true, '-1'], [hv.lo, false, '-2']]) {
       const m0 = Core.footprintMask(part, geo.c, fl[i].s, k, flip, dil);
       items.push({ name: (i + 1) + tag, masks: [{ deg: 0, m: m0 }, { deg: 45, m: Core.rotMask(m0, 45) }] });
     }
   }
-  if (progress) progress('排盘…');
+  if (progress) progress(t('progPack'));
   await new Promise(r => setTimeout(r, 0));
   const plates = Core.packPlates(items, PLATE, PR.margin, PR.gap);
   packCache = { key, plates };
@@ -1095,7 +1199,7 @@ async function showPlate(n) {
   const pk = await ensurePacked(t => { $('btnPlates').textContent = t; });
   const fl = Core.floors(params());
   n = Math.max(1, Math.min(pk.plates.length, n));
-  $('btnPlates').textContent = '生成中…';
+  $('btnPlates').textContent = t('generating');
   await new Promise(r => setTimeout(r, 20));
   const list = pk.plates[n - 1];
   const g = plateMesh(list, fl);
@@ -1105,9 +1209,9 @@ async function showPlate(n) {
   $('plateChips').dataset.shown = '1';
   R.setPlate({ size: PLATE, margin: PR.margin });
   R.upload(g); R.setFloors([{ i: 0, s: 1, th: 0, z: 0 }], g, { pitch: 0 }); R.fit(); R.draw();
-  $('hudA').textContent = `盘 ${n} / ${pk.plates.length} · ${list.map(x => x.name).join(' · ')}` + (g.missing.length ? ` · ${g.missing.join(' ')} 层号放不下` : '');
-  $('btnPlates').textContent = '返回塔楼';
-  $('btnPrev').textContent = '预览分件';
+  $('hudA').textContent = t('hudPlate', { n, N: pk.plates.length, list: list.map(x => x.name).join(' · ') }) + (g.missing.length ? t('noLabel', { list: g.missing.join(' ') }) : '');
+  $('btnPlates').textContent = t('back');
+  $('btnPrev').textContent = t('btnPrev');
   renderChips();
 }
 function piecesFor(i, fl) {
@@ -1129,8 +1233,9 @@ function showPreview(n) {
   PR.preview = i + 1; PR.plate = 0;
   R.setPlate(null);
   R.upload(g); R.setFloors([{ i: 0, s: 1, th: 0, z: 0 }], g, { pitch: 0 }); R.fit(); R.draw();
-  $('hudA').textContent = `第 ${i + 1} 层分件 · 左 ${i + 1}-1 上半（已翻面）· 右 ${i + 1}-2 下半 · 单位 mm` + (a.placed && b.placed ? '' : ' · 层号放不下');
-  $('btnPrev').textContent = '返回塔楼';
+  $('hudA').textContent = t('hudPieces', { n: i + 1 }) + (a.placed && b.placed ? '' : t('noLabelShort'));
+  $('btnPrev').textContent = t('back');
+  $('btnPlates').textContent = t('btnPlates');
 }
 
 function bindSlider(key, nId, rId, opts = {}) {
@@ -1210,16 +1315,16 @@ function guessUnit(pos) {
 function loadBuffer(buf, name, quiet) {
   let pos;
   try { pos = Core.parseSTL(buf); } catch (e) { pos = null; }
-  if (!pos || pos.length < 9) { toast('没读到三角面，请确认是 STL 文件'); return; }
-  raw = pos; fileName = name;
+  if (!pos || pos.length < 9) { toast(t('notStl')); return; }
+  raw = pos; fileName = name; sampleKind = name ? null : sampleKind;
   S.unit = guessUnit(pos);
   S.gap = defaultGap(pos, S.unit, S.upY);
   syncAll();
   rebuild();
-  if (!quiet) toast(`已载入 ${name} · 单位 ${S.unit === 0.001 ? 'mm' : 'm'}` + (S.gap === 0 ? ' · 单体为整层高，净高设为 0' : '') + '，可在左侧修改');
+  if (!quiet) toast(t('loaded', { name, u: S.unit === 0.001 ? 'mm' : 'm' }) + (S.gap === 0 ? t('loadedGap0') : '') + t('loadedEnd'));
 }
 function loadSample() {
-  raw = Core.samplePlate(); fileName = '示例楼板'; S.unit = 1; S.upY = false;
+  raw = Core.samplePlate(); fileName = ''; sampleKind = 'slab'; S.unit = 1; S.upY = false;
   syncAll(); rebuild();
 }
 const drop = $('drop'), file = $('file');
@@ -1234,8 +1339,8 @@ async function loadUnit(quiet) {
   try {
     const r = await fetch('sample-unit.stl');
     if (!r.ok) throw new Error(r.status);
-    loadBuffer(await r.arrayBuffer(), '示例单体.stl', quiet);
-  } catch (e) { loadSample(); if (!quiet) toast('示例单体需要在网页上打开，已载入示例楼板'); }
+    loadBuffer(await r.arrayBuffer(), '', quiet); sampleKind = 'unit'; updateInfo();
+  } catch (e) { loadSample(); if (!quiet) toast(t('sampleNeedsWeb')); }
 }
 $('btnUnit').onclick = () => loadUnit(false);
 $('btnReset').onclick = () => { Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY); syncAll(); rebuild(); };
@@ -1247,67 +1352,64 @@ for (const [id, key] of [['nMargin', 'margin'], ['nGapP', 'gap']]) {
 $('btnPlates').onclick = async () => {
   if (PR.plate) { $('plateChips').dataset.shown = ''; update(true); return; }
   const b = $('btnPlates'); b.disabled = true;
-  try { await showPlate(1); } catch (e) { console.error(e); toast('排盘失败：' + e.message); b.textContent = '排盘预览'; }
+  try { await showPlate(1); } catch (e) { console.error(e); toast(t('packFail') + errText(e)); b.textContent = t('btnPlates'); }
   b.disabled = false;
 };
 $('plateChips').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
-  try { await showPlate(+b.dataset.i); } catch (err) { console.error(err); toast('排盘失败：' + err.message); }
+  try { await showPlate(+b.dataset.i); } catch (err) { console.error(err); toast(t('packFail') + errText(err)); }
 });
 $('btnPrev').onclick = () => {
   if (PR.preview) { update(true); return; }
-  const b = $('btnPrev'); b.textContent = '生成中…'; b.disabled = true;
-  setTimeout(() => { try { showPreview(+$('nPrev').value || 1); } catch (e) { console.error(e); toast('预览失败：' + e.message); } b.disabled = false; }, 30);
+  const b = $('btnPrev'); b.textContent = t('generating'); b.disabled = true;
+  setTimeout(() => { try { showPreview(+$('nPrev').value || 1); } catch (e) { console.error(e); toast(t('prevFail') + errText(e)); } b.disabled = false; }, 30);
 };
 $('btnPrint').onclick = async () => {
   const btn = $('btnPrint'); btn.disabled = true;
   try {
     const fl = Core.floors(params());
     const pk = await ensurePacked(t => { btn.textContent = t; });
-    const folder = `${baseName()}_1-${PR.den}_打印件/`;
+    const folder = `${baseName()}_1-${PR.den}_${t('folder')}/`;
     const entries = [], missing = new Set(), done = new Set();
     const plateOf = {};
     pk.plates.forEach((p, i) => p.forEach(it => { plateOf[it.name] = i + 1; }));
     const one = [{ i: 0, z: 0, s: 1, th: 0 }];
     for (let i = 0; i < pk.plates.length; i++) {
       const list = pk.plates[i];
-      btn.textContent = `盘 ${i + 1}/${pk.plates.length}`;
+      btn.textContent = t('plateProg', { i: i + 1, n: pk.plates.length });
       await new Promise(r => setTimeout(r, 0));
       const g = plateMesh(list, fl);
       g.missing.forEach(n => missing.add(n));
       const tag = String(i + 1).padStart(2, '0');
-      entries.push(await Core.zipEntry(`${folder}按盘/盘${tag}_${list.map(x => x.name).join('_')}.stl`, new Uint8Array(Core.exportSTL(g.V, g.F, [0, 0, 0], one, 1))));
+      entries.push(await Core.zipEntry(`${folder}${t('fPlates')}/${t('plateFile')}${tag}_${list.map(x => x.name).join('_')}.stl`, new Uint8Array(Core.exportSTL(g.V, g.F, [0, 0, 0], one, 1))));
       for (const it of list) {
         if (done.has(it.name)) continue;
         const pc = pieceByName(it.name, fl);
-        entries.push(await Core.zipEntry(`${folder}单片/${it.name}.stl`, new Uint8Array(Core.exportSTL(pc.V, pc.F, [0, 0, 0], one, 1))));
+        entries.push(await Core.zipEntry(`${folder}${t('fPieces')}/${it.name}.stl`, new Uint8Array(Core.exportSTL(pc.V, pc.F, [0, 0, 0], one, 1))));
         done.add(it.name);
       }
     }
-    btn.textContent = '打包…';
+    btn.textContent = t('zipping');
     const plates = pk.plates.map(p => p.map(x => x.name));
     const info = {
-      title: fileName.replace(/\.stl$/i, ''), scaleDen: PR.den, wall: PR.wall,
+      title: dispName().replace(/\.stl$/i, ''), scaleDen: PR.den, wall: PR.wall, text: I18N[LANG],
       floors: fl.map(f => { const a = plateOf[(f.i + 1) + '-1'], b = plateOf[(f.i + 1) + '-2']; return { no: f.i + 1, angle: f.th * 180 / Math.PI, s: f.s, plate: a === b ? a : a + '/' + b }; }),
       plates,
     };
     const enc = new TextEncoder();
-    entries.push(await Core.zipEntry(folder + '组装图.svg', enc.encode(Core.assemblySVG(info))));
+    entries.push(await Core.zipEntry(folder + t('guideFile'), enc.encode(Core.assemblySVG(info))));
     const notes = [
-      `单体塔楼 · 打印分件`, `比例 1:${PR.den} · 打印壁厚 ${PR.wall} mm（相当于真实 ${PR.wall * PR.den / 1000} m）· 单位 mm`,
-      `每层切成上下两半：N-1 = 上半（已翻面，平面朝下打印，组装时翻回），N-2 = 下半`,
-      `层号凸字在臂内槽底，组装后被盖住`, `扭转：每层相对下一层 ${S.step}°（逆时针，俯视），见 组装图.svg`, '',
-      `按盘/：每盘一个 STL，零件已排好（盘边 ${PR.margin} mm，间距 ${PR.gap} mm，A1 256 × 256 mm）。`,
-      `在 Bambu Studio 里每个文件导入一个盘；需要单独调整时右键"拆分为对象"。`,
-      `单片/：每片单独的 STL，文件名即层号。`, '',
-      `打印盘分配：`, ...plates.map((p, i) => `盘 ${i + 1}：${p.join('、')}`),
-      ...(missing.size ? ['', `以下零件放不下层号：${[...missing].join('、')}`] : []),
+      t('n1'), t('n2', { s: PR.den, w: PR.wall, r: PR.wall * PR.den / 1000 }),
+      t('n3'), t('n4'), t('n5', { d: S.step, g: t('guideFile') }), '',
+      t('n6', { f: t('fPlates'), m: PR.margin, gp: PR.gap }), t('n7'), t('n8', { f: t('fPieces') }), '',
+      t('n9'), ...plates.map((p, i) => t('gPlateLine', { i: i + 1, list: p.join(t('sep')) })),
+      ...(missing.size ? ['', t('n10', { list: [...missing].join(t('sep')) })] : []),
     ].join('\r\n');
-    entries.push(await Core.zipEntry(folder + '说明.txt', enc.encode('﻿' + notes)));
-    save(new Blob(Core.zipBlobParts(entries), { type: 'application/zip' }), `${baseName()}_1-${PR.den}_打印件.zip`, 'application/zip');
-    toast(`已导出 ${pk.plates.length} 盘 · ${done.size} 片` + (missing.size ? ` · ${missing.size} 片层号放不下` : ''));
-  } catch (e) { console.error(e); toast('导出失败：' + (e.message || e)); }
-  btn.disabled = false; btn.textContent = '导出 ZIP';
+    entries.push(await Core.zipEntry(folder + t('notesFile'), enc.encode('﻿' + notes)));
+    save(new Blob(Core.zipBlobParts(entries), { type: 'application/zip' }), `${baseName()}_1-${PR.den}_${t('folder')}.zip`, 'application/zip');
+    toast(t('exported', { p: pk.plates.length, n: done.size }) + (missing.size ? t('exportedMissing', { n: missing.size }) : ''));
+  } catch (e) { console.error(e); toast(t('exportFail') + errText(e)); }
+  btn.disabled = false; btn.textContent = t('btnPrint');
 };
 
 let toastT;
@@ -1315,7 +1417,7 @@ function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add
 
 // ---------- export ----------
 const unitName = () => S.unit === 0.001 ? 'Millimeters' : S.unit === 0.01 ? 'Centimeters' : 'Meters';
-const baseName = () => (fileName.replace(/\.stl$/i, '') || 'unit') + `_tower_${S.count}F`;
+const baseName = () => (dispName().replace(/\.stl$/i, '').replace(/\s+/g, '-') || 'unit') + `_tower_${S.count}F`;
 function save(data, name, type) {
   const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type }));
   const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -1324,7 +1426,7 @@ function save(data, name, type) {
 const busy = (btn, f) => async () => {
   const old = btn.textContent; btn.disabled = true; btn.textContent = '…';
   await new Promise(r => setTimeout(r, 30));
-  try { await f(); } catch (e) { console.error(e); toast('导出失败：' + (e.message || e)); }
+  try { await f(); } catch (e) { console.error(e); toast(t('exportFail') + errText(e)); }
   btn.disabled = false; btn.textContent = old;
 };
 $('exSTL').onclick = busy($('exSTL'), () => save(Core.exportSTL(geo.V, geo.F, geo.c, Core.floors(params()), 1), baseName() + '.stl', 'model/stl'));
@@ -1337,13 +1439,13 @@ function loadRhino() {
     const s = document.createElement('script');
     s.src = RHINO + 'rhino3dm.js';
     s.onload = () => rhino3dm({ locateFile: f => RHINO + f }).then(res, rej);
-    s.onerror = () => rej(new Error('无法加载 rhino3dm（需要联网）'));
+    s.onerror = () => rej(new Error(t('rhinoFail')));
     document.head.appendChild(s);
   }).catch(e => { rhinoP = null; throw e; });
   return rhinoP;
 }
 $('ex3DM').onclick = busy($('ex3DM'), async () => {
-  toast('正在加载 Rhino 库…');
+  toast(t('rhinoLoad'));
   const rhino = await loadRhino();
   const bytes = Core.export3DM(rhino, geo.V, geo.F, geo.c, Core.floors(params()), 1, unitName());
   save(bytes, baseName() + '.3dm', 'application/octet-stream');
@@ -1353,7 +1455,7 @@ $('ex3DM').onclick = busy($('ex3DM'), async () => {
 const R = (() => {
   const cv = $('gl');
   const gl = cv.getContext('webgl2', { antialias: true });
-  if (!gl) { $('err').style.display = 'flex'; $('err').textContent = '浏览器不支持 WebGL2，无法预览（导出仍可用）'; return { setFloors() {}, fit() {}, draw() {}, upload() {}, setPlate() {} }; }
+  if (!gl) { $('err').style.display = 'flex'; $('err').textContent = t('noWebgl'); return { setFloors() {}, fit() {}, draw() {}, upload() {}, setPlate() {} }; }
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
   const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
   const meshP = prog(`#version 300 es
@@ -1560,6 +1662,25 @@ const R = (() => {
 })();
 function uploadMesh() { R.upload(geo); }
 
+function setLang(l) {
+  if (l === LANG) return;
+  LANG = l;
+  try { localStorage.setItem(LANG_KEY, l); } catch (e) {}
+  applyStatic();
+  updateInfo();
+  if (PR.plate) { showPlate(PR.plate).catch(e => console.error(e)); updateRead(); }
+  else if (PR.preview) { showPreview(PR.preview); updateRead(); }
+  else update(false);
+}
+// refresh the read-outs without leaving a preview
+function updateRead() {
+  const keep = [PR.preview, PR.plate];
+  const fl = Core.floors(params());
+  updatePrint(fl);
+  [PR.preview, PR.plate] = keep;
+}
+$('segLang').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLang(b.dataset.v); });
+applyStatic();
 window.__app = { S, Core, get geo() { return geo; }, loadBuffer, rebuild };
 loadSample();
 loadUnit(true);

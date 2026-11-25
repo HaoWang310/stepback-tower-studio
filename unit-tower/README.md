@@ -15,6 +15,8 @@ Export: STL (merged), OBJ and 3DM (one object per floor), in the units of the up
 
 Single file, no build step; preview uses plain WebGL2 instancing.
 
+**Language**: Chinese / English (中 | EN switch next to the title). The page follows the browser/system language on first visit and then remembers the last choice; exported ZIP folders, file names, `assembly.svg`/`组装图.svg` and the notes follow the interface language.
+
 ## Print parts (Bambu Lab A1, 256 × 256 × 256 mm)
 
 Panel **打印分件** exports every floor as two printable pieces in one ZIP:
