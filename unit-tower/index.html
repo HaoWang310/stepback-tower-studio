@@ -62,6 +62,10 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 #tools button{background:rgba(28,28,30,.8);border:0.5px solid var(--line2);color:var(--t2);font:inherit;font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer}
 #tools button:hover{color:var(--t1)}
 #tools button.on{background:var(--t1);color:#000;border-color:var(--t1)}
+#legend{position:absolute;left:18px;bottom:18px;display:grid;grid-template-columns:auto auto;gap:4px 10px;font-size:11px;color:var(--t2);pointer-events:none}
+#legend span{grid-column:1/3}
+#legend i{grid-column:1/3;display:block;width:150px;height:6px;border-radius:3px;background:linear-gradient(to right,#ededf2,#ff6a3d)}
+#legend b{font-weight:400}#legend #legB{text-align:right}
 #cap{position:absolute;top:16px;left:18px;max-width:60%;pointer-events:none}
 #cap .k{font-size:11px;color:var(--t3);letter-spacing:.04em}
 #cap .t{font-size:18px;font-weight:500;margin-top:4px;letter-spacing:-.01em}
@@ -125,6 +129,10 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       <input type="range" id="rMin" min="0.2" max="1.5" step="0.01">
       <div class="row"><label data-i18n="curve"></label>
         <div class="seg" id="segCurve"><button data-v="linear" class="on" data-i18n="linear"></button><button data-v="smooth" data-i18n="smooth"></button></div></div>
+      <div class="row"><label data-i18n="shade"></label>
+        <div class="seg" id="segShade"><button data-v="0" class="on" data-i18n="whiteModel"></button><button data-v="1" data-i18n="waistColour"></button></div></div>
+      <div class="row"><label data-i18n="envLines"></label>
+        <div class="seg" id="segEnv"><button data-v="1" class="on" data-i18n="show"></button><button data-v="0" data-i18n="hide"></button></div></div>
       <div class="read" id="readWaist"></div>
     </div>
 
@@ -174,6 +182,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     <div id="tools"><button id="btnPlay"></button><button id="btnFit" data-i18n="fit"></button></div>
     <div id="cap" class="hidden"><div class="k" id="capK"></div><div class="t" id="capT"></div><div class="s" id="capS"></div><div class="bar" id="capBar"><i></i><i></i><i></i><i></i><i></i></div></div>
     <div id="toast"></div>
+    <div id="legend" class="hidden"><span data-i18n="legend"></span><i></i><b id="legA">1.00</b><b id="legB">0.62</b></div>
     <div id="hud"><div class="a" id="hudA"></div><div class="b" data-i18n="hint"></div></div>
     <div id="err"></div>
   </main>
@@ -946,6 +955,7 @@ const I18N = {
     margin: '盘边留白', gapP: '零件间距', prevFloor: '预览第', prevUnit: '层分件',
     btnPrev: '预览分件', btnPlates: '排盘预览', back: '返回塔楼', btnPrint: '导出 ZIP',
     secExport: '导出', exportNote: '导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。', reset: '恢复 gh 默认参数',
+    shade: '显示', whiteModel: '白模', waistColour: '收腰着色', envLines: '收腰轮廓', show: '显示', hide: '隐藏', legend: '收腰比例',
     fit: '重置视角', play: '▶ 播放', stop: '■ 停止',
     pK: '{i} / 5', p1: '单体 · Offset Mesh', p1s: '{w} × {d} × {h} m · {thick}', p1t: '加厚 {t} m（两侧各一半）', p1c: '闭合实体，直接使用',
     p2: '叠层 · Series + Move', p2s: '第 {i} / {n} 层 · 层距 {p} m', p3: '收腰 · Series + Reverse List + Merge → Scale NU', p3s: '{a} → {m} → {a} · 以每层质心为基点（Volume）',
@@ -989,6 +999,7 @@ const I18N = {
     margin: 'Plate margin', gapP: 'Part spacing', prevFloor: 'Preview floor', prevUnit: '',
     btnPrev: 'Preview parts', btnPlates: 'Preview plates', back: 'Back to tower', btnPrint: 'Export ZIP',
     secExport: 'Export', exportNote: 'Exports use the file’s own units; OBJ and 3DM have one object per floor.', reset: 'Reset to gh defaults',
+    shade: 'Display', whiteModel: 'White model', waistColour: 'Waist colour', envLines: 'Waist outline', show: 'Show', hide: 'Hide', legend: 'Waist scale',
     fit: 'Reset view', play: '▶ Play', stop: '■ Stop',
     pK: '{i} / 5', p1: 'Unit · Offset Mesh', p1s: '{w} × {d} × {h} m · {thick}', p1t: 'thickened {t} m (half on each side)', p1c: 'closed solid, used as is',
     p2: 'Stacking · Series + Move', p2s: 'Floor {i} / {n} · pitch {p} m', p3: 'Waist · Series + Reverse List + Merge → Scale NU', p3s: '{a} → {m} → {a} · about each floor’s centroid (Volume)',
@@ -1042,6 +1053,12 @@ function applyStatic() {
 
 const GH = { count: 40, gap: 3.6, minR: 0.62, curve: 'linear', step: 22.5, thick: 0.1, pivot: 'centroid' };
 const S = Object.assign({ unit: 1, upY: false }, GH);
+const VIS = { colour: false, lines: true };
+function applyVis(cb, lines) {
+  R.setOverlay({ cb, lines: lines && !PR.preview && !PR.plate });
+  $('legend').classList.toggle('hidden', !(cb > 0.5) || PR.preview || PR.plate);
+  $('legA').textContent = '1.00'; $('legB').textContent = (S.minR).toFixed(2);
+}
 const PR = { den: 500, wall: 1.2, labels: true, preview: 0, margin: 10, gap: 6, plate: 0 };
 let packCache = null;
 let halves = null;
@@ -1120,6 +1137,7 @@ function update(refit, keepPlay) {
   $('btnPlates').textContent = t('btnPlates');
   renderChips();
   R.setFloors(fl, geo, p);
+  applyVis(VIS.colour ? 1 : 0, VIS.lines);
   if (refit) R.fit();
   R.draw();
 }
@@ -1227,6 +1245,7 @@ async function showPlate(n) {
   g.c = [PLATE / 2, PLATE / 2, 0];
   g.bb = Core.bbox(g.V);
   PR.preview = 0; PR.plate = n;
+  applyVis(0, false);
   $('plateChips').dataset.shown = '1';
   R.setPlate({ size: PLATE, margin: PR.margin });
   R.upload(g); R.setFloors([{ i: 0, s: 1, th: 0, z: 0 }], g, { pitch: 0 }); R.fit(); R.draw();
@@ -1253,6 +1272,7 @@ function showPreview(n) {
   const g = { V, F, c: [0, 0, 0], bb: Core.bbox(V) };
   PR.preview = i + 1; PR.plate = 0;
   R.setPlate(null);
+  applyVis(0, false);
   R.upload(g); R.setFloors([{ i: 0, s: 1, th: 0, z: 0 }], g, { pitch: 0 }); R.fit(); R.draw();
   $('hudA').textContent = t('hudPieces', { n: i + 1 }) + (a.placed && b.placed ? '' : t('noLabelShort'));
   $('btnPrev').textContent = t('back');
@@ -1284,7 +1304,7 @@ const wallSlider = (() => {
   r.addEventListener('input', () => set(r.value, r)); n.addEventListener('change', () => set(n.value, n));
   return { sync() { n.value = PR.wall; r.value = PR.wall; paint(); } };
 })();
-for (const [id, fn] of [['segScale', v => { PR.den = +v; }], ['segLabel', v => { PR.labels = v === '1'; }]]) {
+for (const [id, fn] of [['segScale', v => { PR.den = +v; }], ['segLabel', v => { PR.labels = v === '1'; }], ['segShade', v => { VIS.colour = v === '1'; }], ['segEnv', v => { VIS.lines = v === '1'; }]]) {
   $(id).addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     fn(b.dataset.v);
@@ -1477,23 +1497,23 @@ $('ex3DM').onclick = busy($('ex3DM'), async () => {
 const R = (() => {
   const cv = $('gl');
   const gl = cv.getContext('webgl2', { antialias: true });
-  if (!gl) { $('err').style.display = 'flex'; $('err').textContent = t('noWebgl'); return { setFloors() {}, fit() {}, draw() {}, upload() {}, setPlate() {}, fitFor() { return { tgt: [0, 0, 0], dist: 1 }; }, cam: { tgt: [0, 0, 0] }, ext: {}, setHi() {}, onInput: null }; }
+  if (!gl) { $('err').style.display = 'flex'; $('err').textContent = t('noWebgl'); return { setFloors() {}, fit() {}, draw() {}, upload() {}, setPlate() {}, fitFor() { return { tgt: [0, 0, 0], dist: 1 }; }, setOverlay() {}, cam: { tgt: [0, 0, 0] }, ext: {}, setHi() {}, onInput: null }; }
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
   const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
   const meshP = prog(`#version 300 es
     layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec4 aI;
     uniform mat4 uVP; uniform float uN; uniform float uHi;
-    out vec3 vN; out vec3 vW; out float vT; out float vHi;
+    out vec3 vN; out vec3 vW; out float vT; out float vHi; out float vS;
     void main(){
       float c=cos(aI.y), s=sin(aI.y);
       vec2 xy=aP.xy*aI.x; xy=vec2(c*xy.x-s*xy.y, s*xy.x+c*xy.y);
       vec3 w=vec3(xy, aP.z+aI.z);
       vec2 nxy=aN.xy/max(aI.x,1e-4); nxy=vec2(c*nxy.x-s*nxy.y, s*nxy.x+c*nxy.y);
-      vN=normalize(vec3(nxy,aN.z)); vW=w; vT=uN>1.5?aI.w/(uN-1.0):1.0; vHi=abs(aI.w-uHi)<0.5?1.0:0.0;
+      vN=normalize(vec3(nxy,aN.z)); vW=w; vT=uN>1.5?aI.w/(uN-1.0):1.0; vHi=abs(aI.w-uHi)<0.5?1.0:0.0; vS=aI.x;
       gl_Position=uVP*vec4(w,1.0);
     }`, `#version 300 es
     precision highp float;
-    in vec3 vN; in vec3 vW; in float vT; in float vHi; uniform vec3 uEye; out vec4 o;
+    in vec3 vN; in vec3 vW; in float vT; in float vHi; in float vS; uniform vec3 uEye; uniform float uCB; uniform float uSmin; out vec4 o;
     void main(){
       vec3 n=normalize(vN); vec3 v=normalize(uEye-vW);
       if(dot(n,v)<0.0) n=-n;
@@ -1502,6 +1522,8 @@ const R = (() => {
       float hemi=0.5+0.5*n.z;
       float rim=pow(1.0-max(dot(n,v),0.0),3.0);
       vec3 base=mix(vec3(0.42,0.42,0.44), vec3(0.96,0.96,0.97), vT);
+      float kS=clamp((1.0-vS)/max(1.0-uSmin,1e-3),0.0,1.0);
+      base=mix(base, mix(vec3(0.93,0.93,0.95), vec3(1.0,0.416,0.239), kS), uCB);
       vec3 col=base*(0.22+0.18*hemi+0.62*d)+rim*0.18;
       col=mix(col, vec3(1.0,0.416,0.239)*(0.45+0.6*d)+rim*0.2, vHi*0.9);
       o=vec4(pow(col,vec3(0.95)),1.0);
@@ -1515,7 +1537,9 @@ const R = (() => {
   let nVerts = 0, nInst = 0, gridN = 0, axisStart = 0, plateLines = 0;
   let cam = { az: -0.75, el: 0.42, dist: 100, tgt: [0, 0, 0] };
   let ext = { r: 10, h: 10, z0: 0 };
-  let plateMode = null, hi = -1;
+  let plateMode = null, hi = -1, lastFl = [], envR = 0, envH = 0, smin = 1;
+  const overlay = { lines: true, cb: 0 };
+  const evao = gl.createVertexArray(), evbo = gl.createBuffer();
 
   function upload(g) {
     const { V, F, c } = g;
@@ -1545,6 +1569,7 @@ const R = (() => {
   }
 
   function setFloors(fl, g, p) {
+    lastFl = fl;
     const inst = new Float32Array(fl.length * 4);
     fl.forEach((f, i) => { inst[i * 4] = f.s; inst[i * 4 + 1] = f.th; inst[i * 4 + 2] = f.z; inst[i * 4 + 3] = i; });
     gl.bindBuffer(gl.ARRAY_BUFFER, ibo);
@@ -1557,6 +1582,7 @@ const R = (() => {
     const smax = Math.max(1, ...fl.map(f => f.s));
     const z0 = bb.min[2] - c[2], z1 = bb.max[2] - c[2] + (fl.length - 1) * p.pitch;
     ext = { r: r * smax, h: z1 - z0, z0, z1 };
+    envR = r; envH = g.bb.size[2]; smin = fl.length ? Math.min(...fl.map(f => f.s)) : 1;
     buildLines();
   }
 
@@ -1589,6 +1615,36 @@ const R = (() => {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(L), gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
     gl.bindVertexArray(null);
+  }
+  // waist envelope: radius = farthest point of the unit from the pivot × floor scale
+  function drawEnvelope(m) {
+    const px = cam.dist * 2 * Math.tan(17.5 * Math.PI / 180) / Math.max(1, cv.clientHeight);
+    const wP = px * 2.6, wR = px * 2.0, grow = 1.04;
+    const zc = f => f.z + ext.z0 + envH / 2;
+    const P = [], Q = [];
+    const quad = (A, a1, b1, b2, a2) => A.push(...a1, ...b1, ...b2, ...a1, ...b2, ...a2);
+    const x = m.xA, n = lastFl.length;
+    for (const side of [-1, 1]) for (let i = 0; i < n - 1; i++) {
+      const a = lastFl[i], b = lastFl[i + 1], ra = envR * a.s * grow * side, rb = envR * b.s * grow * side;
+      const A0 = [x[0] * (ra - wP / 2), x[1] * (ra - wP / 2), zc(a)], A1 = [x[0] * (ra + wP / 2), x[1] * (ra + wP / 2), zc(a)];
+      const B0 = [x[0] * (rb - wP / 2), x[1] * (rb - wP / 2), zc(b)], B1 = [x[0] * (rb + wP / 2), x[1] * (rb + wP / 2), zc(b)];
+      quad(P, A0, B0, B1, A1);
+    }
+    for (const f of [lastFl[0], lastFl[Math.floor((n - 1) / 2)], lastFl[n - 1]]) {
+      const r = envR * f.s * grow, z = zc(f);
+      for (let k = 0; k < 72; k += 2) {
+        const a1 = k / 72 * 2 * Math.PI, a2 = (k + 1) / 72 * 2 * Math.PI, c1 = Math.cos(a1), s1 = Math.sin(a1), c2 = Math.cos(a2), s2 = Math.sin(a2);
+        quad(Q, [c1 * (r - wR / 2), s1 * (r - wR / 2), z], [c2 * (r - wR / 2), s2 * (r - wR / 2), z], [c2 * (r + wR / 2), s2 * (r + wR / 2), z], [c1 * (r + wR / 2), s1 * (r + wR / 2), z]);
+        quad(Q, [c1 * r, s1 * r, z - wR / 2], [c2 * r, s2 * r, z - wR / 2], [c2 * r, s2 * r, z + wR / 2], [c1 * r, s1 * r, z + wR / 2]);
+      }
+    }
+    gl.bindVertexArray(evao); gl.bindBuffer(gl.ARRAY_BUFFER, evbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(P.concat(Q)), gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniform4f(gl.getUniformLocation(lineP, 'uC'), 1.0, 0.416, 0.239, 0.95); gl.drawArrays(gl.TRIANGLES, 0, P.length / 3);
+    gl.uniform4f(gl.getUniformLocation(lineP, 'uC'), 0.39, 0.82, 1.0, 0.85); gl.drawArrays(gl.TRIANGLES, P.length / 3, Q.length / 3);
+    gl.disable(gl.BLEND);
   }
   function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const m = x / p; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p; }
 
@@ -1644,11 +1700,15 @@ const R = (() => {
     gl.uniform3fv(gl.getUniformLocation(meshP, 'uEye'), m.eye);
     gl.uniform1f(gl.getUniformLocation(meshP, 'uN'), nInst);
     gl.uniform1f(gl.getUniformLocation(meshP, 'uHi'), hi);
+    gl.uniform1f(gl.getUniformLocation(meshP, 'uCB'), overlay.cb);
+    gl.uniform1f(gl.getUniformLocation(meshP, 'uSmin'), smin);
     gl.bindVertexArray(vao);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, nVerts, nInst);
     gl.useProgram(lineP);
     gl.bindVertexArray(lvao);
     gl.disable(gl.DEPTH_TEST);
+    if (overlay.lines && !plateMode && lastFl.length > 2) drawEnvelope(m);
+    gl.bindVertexArray(lvao);
     gl.uniform4f(gl.getUniformLocation(lineP, 'uC'), 1.0, 0.416, 0.239, 0.55);
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     if (plateMode) {
@@ -1688,7 +1748,7 @@ const R = (() => {
   }
   new ResizeObserver(draw).observe(cv);
   function setPlate(p) { plateMode = p; }
-  const api = { upload, setFloors, fit, draw, setPlate, fitFor, cam, get ext() { return ext; }, setHi(i) { hi = i; }, onInput: null };
+  const api = { upload, setFloors, fit, draw, setPlate, fitFor, cam, setOverlay(o) { Object.assign(overlay, o); }, get ext() { return ext; }, setHi(i) { hi = i; }, onInput: null };
   return api;
 })();
 function uploadMesh() { R.upload(geo); }
@@ -1737,7 +1797,13 @@ function frame(now) {
   else if (t0 < T[3]) { step = 4; const e = ease((t0 - T[2]) / (T[3] - T[2])); shown = fl.map(f => ({ ...f, th: f.th * e })); }
   else { step = 5; shown = fl; }
   R.setHi(hiIdx);
+  const base = VIS.colour ? 1 : 0;
+  let cb = base, lines = false;
+  if (step === 3) { cb = Math.max(base, ease((t0 - T[1]) / 0.9)); lines = true; }
+  else if (step === 4) { cb = Math.max(base, 1 - ease((t0 - T[2]) / 1.6)); lines = true; }
+  else if (step === 5) lines = true;
   R.setFloors(shown, geo, p);
+  applyVis(cb, lines);
   // camera: follow the growing tower (unless the user is steering), then orbit with a gentle bob
   const idle = now - PLAY.input > 2000;
   if (idle) {

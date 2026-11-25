@@ -17,6 +17,8 @@ Single file, no build step; preview uses plain WebGL2 instancing.
 
 **Play** (▶ in the top-right of the view): a 12 s generation sequence — unit (Offset Mesh) → floors drop in one by one (Series + Move) → waist (Series + Reverse List + Merge → Scale NU, about each floor's centroid) → twist (Series → Rotate) — with captions naming the gh components, then a continuous orbit (20 s per turn, gentle up-and-down). Dragging pauses the camera for 2 s; changing a parameter stops it.
 
+**Waist display**: the waist is easy to lose behind the twist (arm orientation changes the silhouette by up to ~29 % floor to floor), so the view draws a waist outline — orange profile lines facing the camera at radius = farthest point of the unit × floor scale, plus dashed rings at the bottom, narrowest and top floors (toggle in the Waist section). A second toggle colours floors by scale (white → orange, with legend). During Play the waist stage colours the tower and shows the outline, the colour fades back to white during the twist, and the orbit shows the white model with the outline. Display only; exports are unaffected.
+
 **Language**: Chinese / English (中 | EN switch next to the title). The page follows the browser/system language on first visit and then remembers the last choice; exported ZIP folders, file names, `assembly.svg`/`组装图.svg` and the notes follow the interface language.
 
 ## Print parts (Bambu Lab A1, 256 × 256 × 256 mm)
