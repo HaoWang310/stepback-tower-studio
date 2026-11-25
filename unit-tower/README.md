@@ -11,6 +11,6 @@ gh defaults: 40 floors, clear height 3.6 m, minimum 0.62, 22.5° per floor, thic
 
 Export: STL (merged), OBJ and 3DM (one object per floor), in the units of the uploaded file. 3DM export loads rhino3dm from jsDelivr on demand, so it needs a network connection.
 
-`sample-unit-repaired.stl` is the default example: the original `sample-unit.stl` (57.6 × 57.6 × 3.6 m open surface, with flipped and twisted patches) repaired by unifying normals and thickening 0.1 m on both sides into a closed solid (57.6 × 57.6 × 3.7 m, 200,192 triangles, no open edges, consistent orientation). The original is kept for reference. Opened straight from disk the page falls back to a built-in floor plate, because browsers block reading the neighbouring file.
+`sample-unit.stl` (57.6 × 57.6 × 3.6 m open surface, with flipped and twisted patches) is the default example; the page repairs it live (unified normals, two-sided thickening), so the thickness slider stays available. `sample-unit-repaired.stl` is the same unit already repaired and thickened 0.1 m into a closed solid (200,192 triangles, no open edges), for direct use in Rhino or printing. Opened straight from disk the page falls back to a built-in floor plate, because browsers block reading the neighbouring file.
 
 Single file, no build step; preview uses plain WebGL2 instancing.
