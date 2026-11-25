@@ -61,6 +61,15 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 #tools{position:absolute;top:12px;right:12px;display:flex;gap:6px}
 #tools button{background:rgba(28,28,30,.8);border:0.5px solid var(--line2);color:var(--t2);font:inherit;font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer}
 #tools button:hover{color:var(--t1)}
+#tools button.on{background:var(--t1);color:#000;border-color:var(--t1)}
+#cap{position:absolute;top:16px;left:18px;max-width:60%;pointer-events:none}
+#cap .k{font-size:11px;color:var(--t3);letter-spacing:.04em}
+#cap .t{font-size:18px;font-weight:500;margin-top:4px;letter-spacing:-.01em}
+#cap .s{font-size:12.5px;color:var(--t2);margin-top:4px;line-height:1.5}
+#cap .bar{display:flex;gap:4px;margin-top:10px}
+#cap .bar i{display:block;width:22px;height:3px;border-radius:2px;background:#2c2c2e;transition:background .3s}
+#cap .bar i.on{background:var(--t1)}
+#cap .bar i.orbit.on{background:#64d2ff}
 #toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(28,28,30,.92);border:0.5px solid var(--line2);padding:8px 14px;border-radius:10px;font-size:12px;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}
 #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--t2);text-align:center;padding:30px}
@@ -162,7 +171,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 
   <main id="view">
     <canvas id="gl"></canvas>
-    <div id="tools"><button id="btnFit" data-i18n="fit"></button></div>
+    <div id="tools"><button id="btnPlay"></button><button id="btnFit" data-i18n="fit"></button></div>
+    <div id="cap" class="hidden"><div class="k" id="capK"></div><div class="t" id="capT"></div><div class="s" id="capS"></div><div class="bar" id="capBar"><i></i><i></i><i></i><i></i><i></i></div></div>
     <div id="toast"></div>
     <div id="hud"><div class="a" id="hudA"></div><div class="b" data-i18n="hint"></div></div>
     <div id="err"></div>
@@ -936,7 +946,11 @@ const I18N = {
     margin: '盘边留白', gapP: '零件间距', prevFloor: '预览第', prevUnit: '层分件',
     btnPrev: '预览分件', btnPlates: '排盘预览', back: '返回塔楼', btnPrint: '导出 ZIP',
     secExport: '导出', exportNote: '导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。', reset: '恢复 gh 默认参数',
-    fit: '重置视角', hint: '拖动旋转 · 右键或 Shift 平移 · 滚轮缩放',
+    fit: '重置视角', play: '▶ 播放', stop: '■ 停止',
+    pK: '{i} / 5', p1: '单体 · Offset Mesh', p1s: '{w} × {d} × {h} m · {thick}', p1t: '加厚 {t} m（两侧各一半）', p1c: '闭合实体，直接使用',
+    p2: '叠层 · Series + Move', p2s: '第 {i} / {n} 层 · 层距 {p} m', p3: '收腰 · Series + Reverse List + Merge → Scale NU', p3s: '{a} → {m} → {a} · 以每层质心为基点（Volume）',
+    p4: '扭转 · Series → Rotate', p4s: '每层 {s}° · 顶层累计 {d}°', p5: '旋转展示', p5s: '{n} 层 · {H} m · 扭转 {d}°',
+    hint: '拖动旋转 · 右键或 Shift 平移 · 滚轮缩放',
     faces: '面', stClosed: '闭合实体 · 直接使用', stNonManifold: '非流形网格 · 无法加厚，按原样使用', stOpen: '开放面 · 已两侧加厚成实体',
     unified: '已统一法线：翻转 {n} 个面', twistSewn: '；{n} 条扭转边已缝合',
     readStack: '层距 {h} + {g} = {p} m · 总高 {H} m', waistFew: '层数太少，不收腰', waistTwo: '第 {a}、{b} 层', waistOne: '第 {a} 层',
@@ -975,7 +989,11 @@ const I18N = {
     margin: 'Plate margin', gapP: 'Part spacing', prevFloor: 'Preview floor', prevUnit: '',
     btnPrev: 'Preview parts', btnPlates: 'Preview plates', back: 'Back to tower', btnPrint: 'Export ZIP',
     secExport: 'Export', exportNote: 'Exports use the file’s own units; OBJ and 3DM have one object per floor.', reset: 'Reset to gh defaults',
-    fit: 'Reset view', hint: 'Drag to orbit · right-drag or Shift to pan · scroll to zoom',
+    fit: 'Reset view', play: '▶ Play', stop: '■ Stop',
+    pK: '{i} / 5', p1: 'Unit · Offset Mesh', p1s: '{w} × {d} × {h} m · {thick}', p1t: 'thickened {t} m (half on each side)', p1c: 'closed solid, used as is',
+    p2: 'Stacking · Series + Move', p2s: 'Floor {i} / {n} · pitch {p} m', p3: 'Waist · Series + Reverse List + Merge → Scale NU', p3s: '{a} → {m} → {a} · about each floor’s centroid (Volume)',
+    p4: 'Twist · Series → Rotate', p4s: '{s}° per floor · top floor {d}°', p5: 'Orbit', p5s: '{n} floors · {H} m · twist {d}°',
+    hint: 'Drag to orbit · right-drag or Shift to pan · scroll to zoom',
     faces: 'triangles', stClosed: 'Closed solid · used as is', stNonManifold: 'Non-manifold mesh · cannot thicken, used as is', stOpen: 'Open surface · thickened on both sides into a solid',
     unified: 'Normals unified: {n} faces flipped', twistSewn: '; {n} twisted edges stitched',
     readStack: 'Floor pitch {h} + {g} = {p} m · height {H} m', waistFew: 'Too few floors for a waist', waistTwo: 'floors {a} and {b}', waistOne: 'floor {a}',
@@ -1019,6 +1037,7 @@ function applyStatic() {
   for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
   for (const el of document.querySelectorAll('[data-i18n-html]')) el.innerHTML = t(el.dataset.i18nHtml);
   for (const b of document.querySelectorAll('#segLang button')) b.classList.toggle('on', b.dataset.v === LANG);
+  if (typeof playLabel === 'function' && $('btnPlay')) playLabel();
 }
 
 const GH = { count: 40, gap: 3.6, minR: 0.62, curve: 'linear', step: 22.5, thick: 0.1, pivot: 'centroid' };
@@ -1077,7 +1096,8 @@ function updateInfo() {
   { const n = dispName(); $('fname').textContent = n.length > 22 ? n.slice(0, 20) + '…' : n; }
 }
 
-function update(refit) {
+function update(refit, keepPlay) {
+  if (typeof PLAY !== 'undefined' && PLAY.on && !keepPlay) stopPlay(false);
   const p = params();
   const fl = Core.floors(p);
   const u = S.unit;
@@ -1094,6 +1114,7 @@ function update(refit) {
     t('exportNote');
   $('hudA').textContent = t('hud', { n: S.count, H: fmt(H, 1), d: fmt((S.count - 1) * S.step, 1) });
   updatePrint(fl, p);
+  if (keepPlay && PLAY.on) return;
   if (PR.preview || PR.plate) { PR.preview = 0; PR.plate = 0; R.setPlate(null); R.upload(geo); refit = true; }
   $('btnPrev').textContent = t('btnPrev');
   $('btnPlates').textContent = t('btnPlates');
@@ -1325,6 +1346,7 @@ function loadBuffer(buf, name, quiet) {
 }
 function loadSample() {
   raw = Core.samplePlate(); fileName = ''; sampleKind = 'slab'; S.unit = 1; S.upY = false;
+  S.gap = defaultGap(raw, 1, false);
   syncAll(); rebuild();
 }
 const drop = $('drop'), file = $('file');
@@ -1455,23 +1477,23 @@ $('ex3DM').onclick = busy($('ex3DM'), async () => {
 const R = (() => {
   const cv = $('gl');
   const gl = cv.getContext('webgl2', { antialias: true });
-  if (!gl) { $('err').style.display = 'flex'; $('err').textContent = t('noWebgl'); return { setFloors() {}, fit() {}, draw() {}, upload() {}, setPlate() {} }; }
+  if (!gl) { $('err').style.display = 'flex'; $('err').textContent = t('noWebgl'); return { setFloors() {}, fit() {}, draw() {}, upload() {}, setPlate() {}, fitFor() { return { tgt: [0, 0, 0], dist: 1 }; }, cam: { tgt: [0, 0, 0] }, ext: {}, setHi() {}, onInput: null }; }
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
   const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
   const meshP = prog(`#version 300 es
     layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec4 aI;
-    uniform mat4 uVP; uniform float uN;
-    out vec3 vN; out vec3 vW; out float vT;
+    uniform mat4 uVP; uniform float uN; uniform float uHi;
+    out vec3 vN; out vec3 vW; out float vT; out float vHi;
     void main(){
       float c=cos(aI.y), s=sin(aI.y);
       vec2 xy=aP.xy*aI.x; xy=vec2(c*xy.x-s*xy.y, s*xy.x+c*xy.y);
       vec3 w=vec3(xy, aP.z+aI.z);
       vec2 nxy=aN.xy/max(aI.x,1e-4); nxy=vec2(c*nxy.x-s*nxy.y, s*nxy.x+c*nxy.y);
-      vN=normalize(vec3(nxy,aN.z)); vW=w; vT=aI.w/max(uN-1.0,1.0);
+      vN=normalize(vec3(nxy,aN.z)); vW=w; vT=uN>1.5?aI.w/(uN-1.0):1.0; vHi=abs(aI.w-uHi)<0.5?1.0:0.0;
       gl_Position=uVP*vec4(w,1.0);
     }`, `#version 300 es
     precision highp float;
-    in vec3 vN; in vec3 vW; in float vT; uniform vec3 uEye; out vec4 o;
+    in vec3 vN; in vec3 vW; in float vT; in float vHi; uniform vec3 uEye; out vec4 o;
     void main(){
       vec3 n=normalize(vN); vec3 v=normalize(uEye-vW);
       if(dot(n,v)<0.0) n=-n;
@@ -1481,6 +1503,7 @@ const R = (() => {
       float rim=pow(1.0-max(dot(n,v),0.0),3.0);
       vec3 base=mix(vec3(0.42,0.42,0.44), vec3(0.96,0.96,0.97), vT);
       vec3 col=base*(0.22+0.18*hemi+0.62*d)+rim*0.18;
+      col=mix(col, vec3(1.0,0.416,0.239)*(0.45+0.6*d)+rim*0.2, vHi*0.9);
       o=vec4(pow(col,vec3(0.95)),1.0);
     }`);
   const lineP = prog(`#version 300 es
@@ -1492,7 +1515,7 @@ const R = (() => {
   let nVerts = 0, nInst = 0, gridN = 0, axisStart = 0, plateLines = 0;
   let cam = { az: -0.75, el: 0.42, dist: 100, tgt: [0, 0, 0] };
   let ext = { r: 10, h: 10, z0: 0 };
-  let plateMode = null;
+  let plateMode = null, hi = -1;
 
   function upload(g) {
     const { V, F, c } = g;
@@ -1569,6 +1592,11 @@ const R = (() => {
   }
   function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const m = x / p; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p; }
 
+  function fitFor(e) {
+    const size = Math.max(e.h, e.r * 2.2);
+    const asp = cv.clientWidth / Math.max(1, cv.clientHeight);
+    return { tgt: [0, 0, e.z0 + e.h * 0.5], dist: size / (2 * Math.tan(17.5 * Math.PI / 180)) / Math.min(1, asp) * 1.42 };
+  }
   function fit() {
     cam.tgt = [0, 0, ext.z0 + ext.h * 0.5];
     const size = Math.max(ext.h, ext.r * 2.2);
@@ -1615,6 +1643,7 @@ const R = (() => {
     gl.uniformMatrix4fv(gl.getUniformLocation(meshP, 'uVP'), false, m.VP);
     gl.uniform3fv(gl.getUniformLocation(meshP, 'uEye'), m.eye);
     gl.uniform1f(gl.getUniformLocation(meshP, 'uN'), nInst);
+    gl.uniform1f(gl.getUniformLocation(meshP, 'uHi'), hi);
     gl.bindVertexArray(vao);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, nVerts, nInst);
     gl.useProgram(lineP);
@@ -1634,9 +1663,10 @@ const R = (() => {
   // orbit / pan / zoom
   const ptrs = new Map(); let last = null, pinch = 0, panMode = false;
   cv.addEventListener('contextmenu', e => e.preventDefault());
-  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); panMode = e.button === 2 || e.shiftKey; last = [e.clientX, e.clientY]; if (ptrs.size === 2) pinch = pdist(); });
+  cv.addEventListener('pointerdown', e => { api.onInput && api.onInput(); cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); panMode = e.button === 2 || e.shiftKey; last = [e.clientX, e.clientY]; if (ptrs.size === 2) pinch = pdist(); });
   cv.addEventListener('pointermove', e => {
     if (!ptrs.has(e.pointerId)) return;
+    api.onInput && api.onInput();
     ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     if (ptrs.size === 2) {
       const d = pdist(); if (pinch) cam.dist *= pinch / d; pinch = d;
@@ -1649,7 +1679,7 @@ const R = (() => {
   });
   const up = e => { ptrs.delete(e.pointerId); pinch = 0; last = ptrs.size ? centre() : null; };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-  cv.addEventListener('wheel', e => { e.preventDefault(); cam.dist *= Math.exp(e.deltaY * 0.0012); draw(); }, { passive: false });
+  cv.addEventListener('wheel', e => { api.onInput && api.onInput(); e.preventDefault(); cam.dist *= Math.exp(e.deltaY * 0.0012); draw(); }, { passive: false });
   function pdist() { const [a, b] = [...ptrs.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]) || 1; }
   function centre() { const [a, b] = [...ptrs.values()]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; }
   function pan(dx, dy) {
@@ -1658,9 +1688,87 @@ const R = (() => {
   }
   new ResizeObserver(draw).observe(cv);
   function setPlate(p) { plateMode = p; }
-  return { upload, setFloors, fit, draw, setPlate };
+  const api = { upload, setFloors, fit, draw, setPlate, fitFor, cam, get ext() { return ext; }, setHi(i) { hi = i; }, onInput: null };
+  return api;
 })();
 function uploadMesh() { R.upload(geo); }
+
+// ---------- play: one unit -> tower (≈12 s), then orbit ----------
+const PLAY = { on: false, raf: 0, t0: 0, last: 0, input: -1e9, az: 0, el0: 0.3 };
+const T = [2, 6, 9, 12];
+const ease = u => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+function playLabel() { const b = $('btnPlay'); b.textContent = PLAY.on ? t('stop') : t('play'); b.classList.toggle('on', PLAY.on); }
+function stopPlay(redraw = true) {
+  if (!PLAY.on) return;
+  PLAY.on = false; cancelAnimationFrame(PLAY.raf);
+  R.setHi(-1);
+  $('cap').classList.add('hidden');
+  playLabel();
+  if (redraw) update(false);
+}
+function startPlay() {
+  if (PR.preview || PR.plate) update(true);
+  const p = params(), fl = Core.floors(p);
+  PLAY.on = true; PLAY.t0 = performance.now(); PLAY.last = PLAY.t0; PLAY.input = -1e9;
+  PLAY.p = p; PLAY.fl = fl;
+  const e1 = { ...R.ext };
+  R.setFloors(fl.slice(0, 1), geo, p);
+  const f1 = R.fitFor(R.ext);
+  R.cam.tgt = f1.tgt; R.cam.dist = f1.dist * 1.25; R.cam.az = -0.75; R.cam.el = 0.42;
+  PLAY.el0 = 0.3;
+  $('cap').classList.remove('hidden');
+  playLabel();
+  const loop = now => { if (!PLAY.on) return; frame(now); PLAY.raf = requestAnimationFrame(loop); };
+  PLAY.raf = requestAnimationFrame(loop);
+}
+function frame(now) {
+  const t0 = (now - PLAY.t0) / 1000, dt = Math.min(0.05, (now - PLAY.last) / 1000);
+  PLAY.last = now;
+  const { p, fl } = PLAY, n = fl.length, u = S.unit;
+  let shown, hiIdx = -1, step;
+  if (t0 < T[0]) { step = 1; shown = [{ ...fl[0], s: 1, th: 0 }]; }
+  else if (t0 < T[1]) {
+    step = 2;
+    const q = (t0 - T[0]) / (T[1] - T[0]) * n;
+    const k = Math.min(n, Math.floor(q) + 1), local = ease(q - Math.floor(q));
+    shown = fl.slice(0, k).map((f, i) => ({ ...f, s: 1, th: 0, z: i === k - 1 && k > 1 ? f.z + (1 - local) * p.pitch * 2.5 : f.z }));
+    hiIdx = k - 1;
+  } else if (t0 < T[2]) { step = 3; const e = ease((t0 - T[1]) / (T[2] - T[1])); shown = fl.map(f => ({ ...f, s: 1 + (f.s - 1) * e, th: 0 })); }
+  else if (t0 < T[3]) { step = 4; const e = ease((t0 - T[2]) / (T[3] - T[2])); shown = fl.map(f => ({ ...f, th: f.th * e })); }
+  else { step = 5; shown = fl; }
+  R.setHi(hiIdx);
+  R.setFloors(shown, geo, p);
+  // camera: follow the growing tower (unless the user is steering), then orbit with a gentle bob
+  const idle = now - PLAY.input > 2000;
+  if (idle) {
+    const f = R.fitFor(R.ext);
+    const k = 1 - Math.exp(-dt * 2.5);
+    for (let i = 0; i < 3; i++) R.cam.tgt[i] += (f.tgt[i] - R.cam.tgt[i]) * k;
+    R.cam.dist += (f.dist - R.cam.dist) * k;
+    if (step === 5) {
+      R.cam.az += dt * 2 * Math.PI / 20;
+      R.cam.el += (PLAY.el0 + 0.12 * Math.sin((t0 - T[3]) * 2 * Math.PI / 14) - R.cam.el) * k;
+    } else R.cam.az += dt * 0.08;
+  }
+  R.draw();
+  // caption
+  const H = ((n - 1) * p.pitch + geo.h) * u;
+  const total = fmt((n - 1) * S.step, 1);
+  let title, sub;
+  if (step === 1) {
+    const sz = baseMesh ? Core.bbox(baseMesh.V).size : geo.bb.size;
+    title = t('p1');
+    sub = t('p1s', { w: fmt(sz[0] * u), d: fmt(sz[1] * u), h: fmt(sz[2] * u, 2), thick: geo.thick ? t('p1t', { t: fmt(S.thick, 2) }) : t('p1c') });
+  } else if (step === 2) { title = t('p2'); sub = t('p2s', { i: Math.max(1, hiIdx + 1), n, p: fmt(p.pitch * u, 2) }); }
+  else if (step === 3) { title = t('p3'); sub = t('p3s', { a: '1', m: fmt(S.minR, 2) }); }
+  else if (step === 4) { title = t('p4'); sub = t('p4s', { s: fmt(S.step, 1), d: total }); }
+  else { title = t('p5'); sub = t('p5s', { n, H: fmt(H, 1), d: total }); }
+  $('capK').textContent = t('pK', { i: step });
+  $('capT').textContent = title; $('capS').textContent = sub;
+  [...$('capBar').children].forEach((b, i) => { b.classList.toggle('on', i < step); b.classList.toggle('orbit', i === 4); });
+}
+R.onInput = () => { if (PLAY.on) PLAY.input = performance.now(); };
+$('btnPlay').onclick = () => PLAY.on ? stopPlay() : startPlay();
 
 function setLang(l) {
   if (l === LANG) return;
@@ -1668,6 +1776,7 @@ function setLang(l) {
   try { localStorage.setItem(LANG_KEY, l); } catch (e) {}
   applyStatic();
   updateInfo();
+  if (PLAY.on) { update(false, true); return; }
   if (PR.plate) { showPlate(PR.plate).catch(e => console.error(e)); updateRead(); }
   else if (PR.preview) { showPreview(PR.preview); updateRead(); }
   else update(false);
