@@ -1,6 +1,6 @@
 # 002 · Helicoidal Karcher–Scherk
 
-- **分类**：B · 单周期 → 螺旋面端
+- **分类**：A · 单周期 → 螺旋面端
 - **用途标签**：屋面 · 结构 · 可打印（暂定）
 - **来源**：H. Karcher, *Embedded Minimal Surfaces Derived from Scherk's Examples*, manuscripta math. 62 (1988)；
   M. Weber，Minimal Surface Repository → Singly Periodic → Helicoidal Ends → Helicoidal Karcher-Scherk Surfaces

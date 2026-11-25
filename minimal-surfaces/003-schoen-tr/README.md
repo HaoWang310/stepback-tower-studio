@@ -1,6 +1,6 @@
 # 003 · Schoen T'–R'
 
-- **分类**：D · 三周期 → 六方棱柱晶胞
+- **分类**：C · 三周期 → 六方棱柱晶胞
 - **用途标签**：结构 · 可打印（暂定）
 - **来源**：A. Schoen 的混合三周期极小曲面；K. Brakke 用 Surface Evolver 复现，
   页面 kenbrakke.com/evolver/examples/periodic/hybrids.html（Schoen's Hybrid Triply Periodic Minimal Surfaces，第 6 号 T'-R'，亏格 6）

@@ -1,6 +1,6 @@
 # 005 · Scherk 双周期曲面（Scherk's first surface）
 
-- **分类**：C · 双周期 · 非平行端 · 亏格 0
+- **分类**：B · 双周期 · 非平行端 · 亏格 0
 - **用途标签**：立面 · 结构 · 可打印
 - **来源**：H. F. Scherk 1835；M. Weber，Minimal Surface Repository（`Doubly Scherk (g=0).nb` 与 PoVRay 场景）
 - **隐式方程**：e^z cos y = cos x（原作 PoVRay 场景采用的形式）
