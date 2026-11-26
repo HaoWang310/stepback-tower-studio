@@ -1016,7 +1016,7 @@ const $ = id => document.getElementById(id);
 const I18N = {
   zh: {
     docTitle: '单体塔楼生成器 · Unit Tower', title: '单体塔楼生成器', sub: '输入一个单体 STL，按建筑测试.gh 的逻辑叠层、收腰、扭转。',
-    secInput: '输入', drop: '<b>拖入 STL 单体</b><br>或点击选择文件', units: '单位', upAxis: '竖向轴', btnUnit: '示例单体', btnSample: '示例楼板',
+    secInput: '输入', drop: '<b>拖入 STL 单体</b><br>或点击选择文件', units: '单位', upAxis: '竖向轴', sampleLoading: '正在载入示例单体…', sampleFailed: '示例单体下载失败：请检查网络，再点一次「示例单体」', btnUnit: '示例单体', btnSample: '示例楼板',
     secThick: '加厚', thickNote: '两侧各一半 · 自动统一法线', thickness: '厚度',
     secStack: '叠层', floors: '层数', gap: '净高', secWaist: '收腰', minR: '最细比例', curve: '曲线', linear: '线性', smooth: '平滑',
     stCatalogue: '‹ 目录', st1: '单体', st2: '塔楼', st3: '打印', st2s: '{n} 层 · {d}°', st3s: '1:{d}', secUnit: '单体', fromCatalogue: '来自极小曲面目录', changeUnit: '更换单体 ›', nextPrint: '下一步：打印 →', uSize: '{w} × {d} × {h} m · 一个单体 = 一层',
@@ -1062,7 +1062,7 @@ const I18N = {
   },
   en: {
     docTitle: 'Unit Tower', title: 'Unit Tower', sub: 'Load one unit as STL and stack it into a tower with the logic of the Grasshopper file 建筑测试.gh: stacking, waist and twist.',
-    secInput: 'Input', drop: '<b>Drop an STL unit</b><br>or click to choose a file', units: 'Units', upAxis: 'Up axis', btnUnit: 'Sample unit', btnSample: 'Sample slab',
+    secInput: 'Input', drop: '<b>Drop an STL unit</b><br>or click to choose a file', units: 'Units', upAxis: 'Up axis', sampleLoading: 'Loading the sample unit…', sampleFailed: 'Could not download the sample unit — check the connection and click “Sample unit” again', btnUnit: 'Sample unit', btnSample: 'Sample slab',
     secThick: 'Thicken', thickNote: 'half on each side · normals unified', thickness: 'Thickness',
     secStack: 'Stacking', floors: 'Floors', gap: 'Clear height', secWaist: 'Waist', minR: 'Narrowest scale', curve: 'Curve', linear: 'Linear', smooth: 'Smooth',
     stCatalogue: '‹ Catalogue', st1: 'Unit', st2: 'Tower', st3: 'Print', st2s: '{n} floors · {d}°', st3s: '1:{d}', secUnit: 'Unit', fromCatalogue: 'from the minimal surface catalogue', changeUnit: 'Change unit ›', nextPrint: 'Next: print →', uSize: '{w} × {d} × {h} m · one unit = one floor',
@@ -1617,13 +1617,22 @@ document.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (
 $('btnSample').onclick = loadSample;
 // the bundled sample unit sits next to this page; opened from disk (no server) it falls back to the plate
 async function loadUnit(quiet) {
-  try {
-    const r = await fetch('sample-unit.stl');
-    if (!r.ok) throw new Error(r.status);
-    const wasCat = !!META; META = null; if (wasCat) Object.assign(S, GH);
-    loadBuffer(await r.arrayBuffer(), '', quiet); sampleKind = 'unit'; updateInfo();
-    restoreParams();
-  } catch (e) { loadSample(); if (!quiet) toast(t('sampleNeedsWeb')); }
+  // 下载失败时重试一次；仍然失败就保留当前模型并明确提示，不再悄悄换成示例楼板
+  if (!quiet) toast(t('sampleLoading'));
+  let buf = null;
+  for (let i = 0; i < 2 && !buf; i++) {
+    try { const r = await fetch('sample-unit.stl', i ? { cache: 'reload' } : undefined); if (!r.ok) throw new Error(r.status); buf = await r.arrayBuffer(); }
+    catch (e) { if (i === 0) await new Promise(res => setTimeout(res, 800)); }
+  }
+  if (!buf) {
+    const disk = location.protocol === 'file:';
+    if (!raw || disk) loadSample();
+    toast(t(disk ? 'sampleNeedsWeb' : 'sampleFailed'));
+    return;
+  }
+  const wasCat = !!META; META = null; if (wasCat) Object.assign(S, GH);
+  loadBuffer(buf, '', quiet); sampleKind = 'unit'; updateInfo();
+  restoreParams();
 }
 $('btnUnit').onclick = () => loadUnit(false);
 $('btnForget').onclick = () => { STORE.del().catch(() => {}); const all = readParams(); for (const k of Object.keys(all)) if (k.startsWith('user:')) delete all[k]; try { localStorage.setItem(PARAM_KEY, JSON.stringify(all)); } catch (e) {} showForget(false); toast(t('forgotten')); };
