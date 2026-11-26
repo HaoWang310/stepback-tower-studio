@@ -60,6 +60,17 @@ Thickening a thin minimal surface by a fixed wall closes its narrow openings and
 - Wall 1.2 mm gives: 001 1:195 (369 mm), 002 1:160, 003 1:180, 005 1:300 (240 mm, one piece); the slender 004 (1:105) and 006 (1:85) are recommended as parts.
 - Pieces, plates and segment STLs all use the variable wall; changing wall or scale afterwards is instant.
 
+### Bambu check & repair
+
+Bambu Studio reads an STL by merging points with identical coordinates and complains about edges that are not shared by exactly two faces ("non-manifold edges"); its own repair runs only on Windows, so on a Mac it points to an online fixer. The page now makes clean files and checks every export the same way:
+
+- **At the source**: floor labels and snap-off tag numbers are one solid per text (union of the 7-segment bars on a grid), not touching boxes. **Tower STL** of a joining unit with clear height 0 is one closed solid: every floor's mid-surface is placed, the points where a floor's top edge meets the next floor's bottom edge are welded (a fifth of a boundary edge), and the whole tower is thickened once (wall scaled with each floor, as on screen). Towers above 1.5 M points (004) are still written floor by floor. In the catalogue, the side walls of the thickened unit follow the boundary direction and the solid faces outward.
+- **Check on export** (`MeshFix`, same code in both pages): print ZIP, segment STL, tower STL and the catalogue STL are read back like the slicer does (bit-identical float32 points) and counted: open edges, non-manifold edges, faces wound against their neighbour, zero-area faces. A line under the export button shows the result; anything found is repaired before the file is written.
+- **Repair**: drop degenerate / duplicate faces → pair the faces at a crowded edge (same separate piece, then same fan around its ends, then by angle so each pair encloses material) → split the points into fans → one winding per piece, closed pieces outward → close holes (up to 64 edges or half the model size) → move split copies 2 µm-scale apart so they stay separate when re-read. Two pairing strategies are tried and the cleaner result kept.
+- **Repair STL…** (bottom of the print panel): any STL, binary or ASCII, processed in the browser and downloaded as `name_修复.stl`.
+- Known leftovers: catalogue 005 keeps 8 edges at the four-tile corner where side walls pass through each other (reported, slicing works). 001's centre axis (six sheets meeting at one point) shows up on plates only (points merge at plate coordinates) and is split during export.
+- `node unit-tower/test-meshfix.cjs` checks labels, repair and that both pages carry the same `MeshFix`.
+
 ## From the minimal surface catalogue
 
 Both pages share a step bar: **‹ Catalogue · ① Unit ② Tower ③ Print**. In the catalogue (`../minimal-surfaces/`), **Use as tower unit →** stores the current unit (open mid-surface with its placement and mirror array, Z up, scaled so one unit = one 3.6 m floor) in this browser and opens this page, which loads it with clear height 0. The twist is set to the first angle where floors join, and a unit card shows its thumbnail and parameters with a link back.
