@@ -42,3 +42,5 @@ Both pages share a step bar: **‹ Catalogue · ① Unit ② Tower ③ Print**. 
 **Floor joints**: for open-surface units the page measures how much of each floor's top edge meets the next floor's bottom edge (turned by the twist), for every angle from −180° to 180°. Angles with ≥ 90 % contact get cyan ticks under the twist slider, and the slider snaps to them; below 50 % a warning says the printed floors will not hold. Units whose top or bottom is a horizontal sheet (like the sample slab) skip this check. The twist slider now runs from −180° to 180°.
 
 **② Tower / ③ Print**: Print parts is its own step; entering it previews the parts of the selected floor.
+
+**Display colours**: Display is now White model / Catalogue colours / Waist colour. A unit sent from the catalogue opens with Catalogue colours — the front and back colours of the palette chosen there (including “Original”), the front colour on the side the catalogue's normals face, the back colour on the other, and a blend on the rims. The palette can only be changed in the catalogue. Imported STLs have no catalogue colours; print previews stay white.

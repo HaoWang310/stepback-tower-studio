@@ -1740,7 +1740,8 @@ async function sendToTower(hash){
   const params = S.spec.filter(([k]) => k !== 'ori').map(([k, lab,,,,f]) => [lab, EN[lab] || lab, f(+P[k])]);
   if (P.fl > 0) params.push(['竖向叠加', 'Vertical stacking', String(P.fl)]);
   if (cur.cmult) params.push(['组合', 'Mirror array', '×' + cur.cmult]);
-  const meta = {src:'catalogue', id:S.id, no:S.no, name_zh:S.no + ' · ' + S.name, name_en:S.no + ' · ' + (EN[S.name] || S.name), params, thumb:unitThumb(), fresh:true};
+  const tp = theme === 'orig' ? PALETTES[P.pal || S.pal || 'se'] : THEMES.find(x => x.id === theme);
+  const meta = {src:'catalogue', pal:{front:tp.front, back:tp.back, theme}, id:S.id, no:S.no, name_zh:S.no + ' · ' + S.name, name_en:S.no + ' · ' + (EN[S.name] || S.name), params, thumb:unitThumb(), fresh:true};
   try { await idbPutUnit({name, buf, at:Date.now(), meta}); }
   catch (e){ toast('保存单体失败，请重试'); return; }
   toast('单体已存好，正在打开塔楼生成器…');
