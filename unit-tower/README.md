@@ -50,6 +50,16 @@ Panel **打印分件** exports every floor as two printable pieces in one ZIP:
 
 For joining units with clear height 0, **Export segment STL** writes the tower itself at print scale with the print wall, standing upright: every floor is scaled (per height for a continuous waist), thickened to the constant print wall, given flat rims, twisted and lifted; the flat rims of neighbouring floors overlap by 0.02 mm so the slicer fuses them. A segment is at most 250 mm tall (A1 height 256 mm): the 20-floor tower at 1:500 is one 144 mm piece, at 1:200 two segments of 10 floors. One segment downloads as a single STL, several as a ZIP (`段01_1-10层.stl` …) in the tower's own orientation, so they stack without turning. Overhanging undersides need supports in the slicer. This is the practical way to print surface 002, whose single floor is a set of separate helical ramps.
 
+### Keep the form (保形)
+
+Thickening a thin minimal surface by a fixed wall closes its narrow openings and the slit between the sheets. With **保形 on** (default for catalogue / joining units, off for the sample unit) the page sets the scale from the wall instead:
+
+- A form field is computed once per unit, twist and pitch (in the background, with progress; 001 about 1 s, 004 with 197k vertices about 17 s after clustering to ~20k). For every vertex and side it measures the room to the nearest *other* part of the surface (path along the surface > 1.6 × straight distance), including the floors above and below, and the fold limit from curvature. Outward sides are capped at half the wall.
+- **Auto scale** = the largest scale at which 95 % of the tower (every floor, waist scale included) keeps at least 80 % of each opening: `den = floor5(1000 · unit · fit95 / wall)`. The tag beside the scale shows 自动 / 手动; typing a scale switches to manual, clicking the tag returns to auto. If the result no longer fits the A1 plate the page uses the largest scale that fits, says how thick the wall may be at most, and offers a button to set it.
+- The remaining narrow spots are thinned to follow the form (each side gets at most its room, the other side takes the rest of the wall up to its own room) and are shown **orange** in the piece and plate previews; the panel lists their share and the thinnest wall.
+- Wall 1.2 mm gives: 001 1:195 (369 mm), 002 1:160, 003 1:180, 005 1:300 (240 mm, one piece); the slender 004 (1:105) and 006 (1:85) are recommended as parts.
+- Pieces, plates and segment STLs all use the variable wall; changing wall or scale afterwards is instant.
+
 ## From the minimal surface catalogue
 
 Both pages share a step bar: **‹ Catalogue · ① Unit ② Tower ③ Print**. In the catalogue (`../minimal-surfaces/`), **Use as tower unit →** stores the current unit (open mid-surface with its placement and mirror array, Z up, scaled so one unit = one 3.6 m floor) in this browser and opens this page, which loads it with clear height 0. The twist is set to the first angle where floors join, and a unit card shows its thumbnail and parameters with a link back.
