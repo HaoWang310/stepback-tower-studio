@@ -76,6 +76,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 .tag.conn{color:#00c8d2;border-color:rgba(0,200,210,.45)}
 .tag.manual{cursor:pointer}
 .tag.manual:hover{color:var(--t1);border-color:var(--t2)}
+.tag:empty{display:none}
+#readForm .hotdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#FF9F0A;margin-right:5px;vertical-align:0}
 #readScale{margin-top:4px}
 #segScale button{white-space:nowrap}
 .btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
@@ -206,11 +208,14 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 
     <div class="sec" id="secPrint">
       <h2><b data-i18n="secPrint"></b> <span>Bambu Lab A1 · 256 mm</span></h2>
-      <div class="row"><label data-i18n="scale"></label>
-        <span class="scl"><span class="unit">1 :</span><input class="num" id="nScale" type="number" min="1" max="1000" step="1" inputmode="numeric" aria-describedby="sclHint"><button class="btn sbtn" id="sclDn" type="button" aria-label="−10">−</button><button class="btn sbtn" id="sclUp" type="button" aria-label="+10">+</button></span></div>
-      <div class="sclhint" id="sclHint">1–1000</div>
+      <div class="row"><label><span data-i18n="formKeep"></span><span class="tag" id="formTag"></span></label>
+        <div class="seg" id="segForm"><button data-v="1" class="on" data-i18n="on"></button><button data-v="0" data-i18n="off"></button></div></div>
+      <div class="read" id="readForm" style="margin-top:2px"></div>
       <div class="row"><label data-i18n="wall"></label><span><input class="num" id="nWall" type="number" step="0.1"><span class="unit">mm</span></span></div>
       <input type="range" id="rWall" min="0.4" max="3" step="0.1">
+      <div class="row"><label><span data-i18n="scale"></span><span class="tag" id="denTag"></span></label>
+        <span class="scl"><span class="unit">1 :</span><input class="num" id="nScale" type="number" min="1" max="1000" step="1" inputmode="numeric" aria-describedby="sclHint"><button class="btn sbtn" id="sclDn" type="button" aria-label="−10">−</button><button class="btn sbtn" id="sclUp" type="button" aria-label="+10">+</button></span></div>
+      <div class="sclhint" id="sclHint">1–1000</div>
       <div class="row"><label data-i18n="labels"></label>
         <div class="seg" id="segLabel"><button data-v="1" class="on" data-i18n="emboss"></button><button data-v="0" data-i18n="noEmboss"></button></div></div>
       <div class="row"><label data-i18n="margin"></label><span><input class="num" id="nMargin" type="number" step="1" style="width:40px"><span class="unit">mm</span></span></div>
@@ -470,8 +475,11 @@ const Core = (() => {
   // so the shell stays closed and continuous.
   // planeZ: a z, or a list of z / { z, tol, boundary }. Offsets of vertices on such a plane slide along the wall
   // onto the plane, so the rim there is flat. boundary: only open-edge vertices count (and they are set exactly on z).
-  function shell(V, F0, t, planeZ) {
+  // off (optional): per-vertex walls { a, b, thin } — a toward the input normal side, b the other side
+  // (file units); replaces the even t / 2 + t / 2. thin marks vertices whose wall was reduced.
+  function shell(V, F0, t, planeZ, off) {
     const nv = V.length / 3;
+    const Nin = off ? vertexNormals(V, F0) : null;
     const planes = (planeZ === undefined ? [] : [].concat(planeZ)).filter(p => p !== undefined && p !== null)
       .map(p => typeof p === 'number' ? { z: p, tol: 1e-6 * (1 + Math.abs(p)) } : p);
     const isB = new Uint8Array(nv);
@@ -514,25 +522,37 @@ const Core = (() => {
       const sg = par ? -1 : 1, w = A[f];
       e[0] += sg * N[f * 3] * w; e[1] += sg * N[f * 3 + 1] * w; e[2] += sg * N[f * 3 + 2] * w;
     }
-    const outV = [];
+    const outV = [], hotV = [];
     const idx = new Map();
     for (const [root, e] of acc) {
       const v = e[3] * 3;
       let l = Math.hypot(e[0], e[1], e[2]);
       let nx = e[0], ny = e[1], nz = e[2];
       if (l < 1e-12) { nx = 0; ny = 0; nz = 1; l = 1; }
-      let ox = nx * t / 2 / l, oy = ny * t / 2 / l, oz = nz * t / 2 / l;
+      const ux = nx / l, uy = ny / l, uz = nz / l;
+      // wall on the + side (along this copy's normal) and on the - side
+      let hp = t / 2, hm = t / 2;
+      if (off) {
+        const agree = ux * Nin[v] + uy * Nin[v + 1] + uz * Nin[v + 2] >= 0;
+        hp = agree ? off.a[e[3]] : off.b[e[3]]; hm = agree ? off.b[e[3]] : off.a[e[3]];
+      }
       let bz = V[v + 2], hit = null;
       for (const p of planes) if (Math.abs(bz - p.z) < p.tol && (!p.boundary || isB[e[3]])) { hit = p; break; }
-      if (hit) {
-        if (hit.boundary) bz = hit.z;
-        // move the offset point along the wall (within its tangent plane) until it lies on the cut plane
-        const ux = nx / l, uy = ny / l, uz = nz / l, gz = 1 - uz * uz;
-        if (gz > 0.15) { const k = oz / gz; ox += k * ux * uz; oy += k * uy * uz; oz = 0; }
-        else { const hl = Math.hypot(ux, uy) || 1; ox = ux / hl * t / 2; oy = uy / hl * t / 2; oz = 0; }
-      }
+      if (hit && hit.boundary) bz = hit.z;
+      // move an offset point along the wall (within its tangent plane) until it lies on the cut plane
+      const offset = h => {
+        let ox = ux * h, oy = uy * h, oz = uz * h;
+        if (hit) {
+          const gz = 1 - uz * uz;
+          if (gz > 0.15) { const k = oz / gz; ox += k * ux * uz; oy += k * uy * uz; oz = 0; }
+          else { const hl = Math.hypot(ux, uy) || 1; ox = ux / hl * h; oy = uy / hl * h; oz = 0; }
+        }
+        return [ox, oy, oz];
+      };
+      const [ax, ay, az] = offset(hp), [bx, by, bz2] = offset(-hm);
       const i = outV.length / 3;
-      outV.push(V[v] + ox, V[v + 1] + oy, bz + oz, V[v] - ox, V[v + 1] - oy, bz - oz);
+      outV.push(V[v] + ax, V[v + 1] + ay, bz + az, V[v] + bx, V[v + 1] + by, bz + bz2);
+      const hot = off && off.thin ? off.thin[e[3]] : 0; hotV.push(hot, hot);
       idx.set(root, i);
     }
     const top = c => { const [root, par] = findQ(find(c)); return idx.get(root) + par; };
@@ -553,7 +573,7 @@ const Core = (() => {
     }
     const Vo = new Float64Array(outV), Fo = new Uint32Array(out);
     if (volumeCentroid(Vo, Fo).vol < 0) for (let k = 0; k < Fo.length; k += 3) { const x = Fo[k + 1]; Fo[k + 1] = Fo[k + 2]; Fo[k + 2] = x; }
-    return { V: Vo, F: Fo, side, flipped: u.flipped, before: u.before, twist: twist.length / 4 };
+    return { V: Vo, F: Fo, side, hot: off ? Uint8Array.from(hotV) : null, flipped: u.flipped, before: u.before, twist: twist.length / 4 };
   }
 
   // per-floor scale factors; for an even floor count this equals the gh
@@ -897,14 +917,17 @@ const Core = (() => {
       const cutDown = !!(opt.cutDown && opt.cutDown[key]), flip = isUpper !== cutDown;
       const V = part.V, n = V.length / 3;
       const Vs = new Float64Array(V.length), sf = typeof s === 'function' ? s : () => s;   // s: one scale, or scale at height z (continuous waist)
+      const SC = new Float64Array(n);
       for (let i = 0; i < n; i++) {
-        const sc = sf(V[i * 3 + 2]);
+        const sc = sf(V[i * 3 + 2]); SC[i] = sc;
         Vs[i * 3] = c[0] + (V[i * 3] - c[0]) * sc;
         Vs[i * 3 + 1] = c[1] + (V[i * 3 + 1] - c[1]) * sc;
         Vs[i * 3 + 2] = V[i * 3 + 2];
       }
       const zEnd = flat ? (isUpper ? flat.z1 : flat.z0) : undefined;
-      const sh = shell(Vs, part.F, wallMM / k, [halves.zc, flat ? { z: zEnd, tol: flat.tol, boundary: true } : undefined]);
+      // 保形: per-vertex walls from the form field (rooms scale with the floor)
+      const fw = opt.form ? formWalls(opt.form.field, opt.form.idx[isUpper ? 'hi' : 'lo'], wallMM / k, SC, part.F) : null;
+      const sh = shell(Vs, part.F, wallMM / k, [halves.zc, flat ? { z: zEnd, tol: flat.tol, boundary: true } : undefined], fw);
       // nothing may cross the cut plane (or, for joining units, the unit's own top / bottom): near-horizontal
       // surface next to it gets pushed past it by the offset and would hold the pieces apart, so clamp it flat
       if (halves.zc !== undefined) for (let i = 2; i < sh.V.length; i += 3) {
@@ -928,6 +951,7 @@ const Core = (() => {
       const ox = (sx0 + sx1) / 2, oy = (sy0 + sy1) / 2;
       for (let i = 0; i < W.length; i += 3) { W[i] -= ox; W[i + 1] -= oy; W[i + 2] -= bb.min[2]; }
       let out = { V: W, F: sh.F, placed: false };
+      const hot0 = sh.hot;
       const useTag = !!(opt.tag && opt.tag[key]);
       if (labels && !useTag) out = addLabel(W, sh.F, floorNo + tag, wallMM, labelMM);
       if (labels && useTag) {
@@ -943,6 +967,7 @@ const Core = (() => {
       out.name = floorNo + tag;
       out.size = bbox(out.V).size;
       out.flip = flip; out.cutDown = cutDown;
+      if (hot0) { const h = new Uint8Array(out.V.length / 3); h.set(hot0.subarray(0, Math.min(hot0.length, h.length))); out.hot = h; out.nThin = fw.nThin; out.nV = n; }
       res[key] = out;
     }
     return res;
@@ -951,13 +976,15 @@ const Core = (() => {
   // one floor of a joining tower as a print-scale solid in the tower's own frame (mm, pivot on the z axis):
   // scale (per height for a continuous waist) -> constant print wall -> flat rims -> twist -> lift.
   // lapLo / lapHi (mm): let the flat rims reach a hair into the neighbouring floor so the slicer fuses them
-  function segmentFloor(V, F, c, f, k, wallMM, flat, zBase, lapLo, lapHi) {
-    const n = V.length / 3, Vs = new Float64Array(V.length);
+  function segmentFloor(V, F, c, f, k, wallMM, flat, zBase, lapLo, lapHi, field) {
+    const n = V.length / 3, Vs = new Float64Array(V.length), SC = new Float64Array(n);
     for (let i = 0; i < n; i++) {
-      const sc = scaleAt(f, V[i * 3 + 2]);
+      const sc = scaleAt(f, V[i * 3 + 2]); SC[i] = sc;
       Vs[i * 3] = c[0] + (V[i * 3] - c[0]) * sc; Vs[i * 3 + 1] = c[1] + (V[i * 3 + 1] - c[1]) * sc; Vs[i * 3 + 2] = V[i * 3 + 2];
     }
-    const sh = shell(Vs, F, wallMM / k, [{ z: flat.z0, tol: flat.tol, boundary: true }, { z: flat.z1, tol: flat.tol, boundary: true }]);
+    let fw = null;
+    if (field) { const idx = new Int32Array(n); for (let i = 0; i < n; i++) idx[i] = i; fw = formWalls(field, idx, wallMM / k, SC, F); }
+    const sh = shell(Vs, F, wallMM / k, [{ z: flat.z0, tol: flat.tol, boundary: true }, { z: flat.z1, tol: flat.tol, boundary: true }], fw);
     const cs = Math.cos(f.th), sn = Math.sin(f.th), W = new Float64Array(sh.V.length);
     for (let i = 0; i < W.length; i += 3) {
       const dx = sh.V[i] - c[0], dy = sh.V[i + 1] - c[1], z = Math.min(flat.z1, Math.max(flat.z0, sh.V[i + 2]));
@@ -965,6 +992,224 @@ const Core = (() => {
       W[i + 2] = (z - flat.z0 + f.z - zBase) * k + (z <= flat.z0 ? -lapLo : z >= flat.z1 ? lapHi : 0);
     }
     return { V: W, F: sh.F };
+  }
+
+  // ---------------- 保形：每一处两侧还有多少空间 ----------------
+  // For each vertex and each side (+n = the input normal side, -n the other) of an open surface unit:
+  // how far the wall may grow (file units) so that every gap to ANOTHER part of the surface keeps at
+  // least (1 - rho) of its width (the two walls of a gap together take at most rho of it), and so that
+  // the offset never folds over where the surface bends tightly. Floors above / below (turned by the
+  // twist, lifted by the pitch) count as other parts too.
+  // "Another part": closer in space than along the surface (path along the mesh > 1.6 x straight + a bit).
+  // Paths are measured on a coarse graph: grid cells split into the separate sheet pieces inside them.
+  // Infinity = nothing in front within reach (that side faces outward).
+  // very dense units (e.g. 004, ~200k vertices) are measured on a coarser copy (grid clustering, ~20k vertices)
+  // and the result carried back to every vertex
+  async function formField(V, F, c, stepDeg, pitch, rho, progress) {
+    const nv0 = V.length / 3;
+    if (nv0 <= 40000) return formFieldMesh(V, F, c, stepDeg, pitch, rho, progress);
+    let area = 0;
+    for (let t = 0; t < F.length; t += 3) {
+      const a = F[t] * 3, b = F[t + 1] * 3, d = F[t + 2] * 3;
+      const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2], wx = V[d] - V[a], wy = V[d + 1] - V[a + 1], wz = V[d + 2] - V[a + 2];
+      area += Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx) / 2;
+    }
+    const cs = Math.sqrt(area / 20000), bb = bbox(V), map = new Map(), cl = new Int32Array(nv0), acc = [];
+    for (let i = 0; i < nv0; i++) {
+      const k = Math.round(V[i * 3] / cs) + ',' + Math.round(V[i * 3 + 1] / cs) + ',' + Math.round(V[i * 3 + 2] / cs);
+      let j = map.get(k); if (j === undefined) { j = acc.length / 4; map.set(k, j); acc.push(0, 0, 0, 0); }
+      cl[i] = j; acc[j * 4] += V[i * 3]; acc[j * 4 + 1] += V[i * 3 + 1]; acc[j * 4 + 2] += V[i * 3 + 2]; acc[j * 4 + 3]++;
+    }
+    const m = acc.length / 4, Vd = new Float64Array(m * 3);
+    for (let j = 0; j < m; j++) for (let k = 0; k < 3; k++) Vd[j * 3 + k] = acc[j * 4 + k] / acc[j * 4 + 3];
+    // keep the unit's top / bottom planes exact
+    for (let i = 0; i < nv0; i++) { const z = V[i * 3 + 2]; if (Math.abs(z - bb.min[2]) < 1e-9 || Math.abs(z - bb.max[2]) < 1e-9) Vd[cl[i] * 3 + 2] = z; }
+    const Fd = [], seen = new Set();
+    for (let t = 0; t < F.length; t += 3) {
+      const a = cl[F[t]], b = cl[F[t + 1]], d = cl[F[t + 2]]; if (a === b || b === d || a === d) continue;
+      const k = [a, b, d].sort((x, y) => x - y).join(','); if (seen.has(k)) continue; seen.add(k); Fd.push(a, b, d);
+    }
+    const f = await formFieldMesh(Vd, new Uint32Array(Fd), c, stepDeg, pitch, rho, progress);
+    const pick = A => { const o = new Float32Array(nv0); for (let i = 0; i < nv0; i++) o[i] = A[cl[i]]; return o; };
+    return { ...f, rp: pick(f.rp), rm: pick(f.rm), fit: pick(f.fit), foldP: pick(f.foldP), foldM: pick(f.foldM), coarse: m };
+  }
+  async function formFieldMesh(V, F, c, stepDeg, pitch, rho, progress) {
+    const nv = V.length / 3, N = vertexNormals(V, F), bb = bbox(V);
+    const size = Math.max(bb.size[0], bb.size[1], bb.size[2]), diag = Math.hypot(...bb.size) || 1;
+    const Rq = 0.5 * Math.max(bb.size[0], bb.size[1], 2 * bb.size[2]);        // how far to look for other parts
+    const seam = 0.003 * diag, add = 0.01 * diag;
+    // three floors: below, own, above
+    const th = stepDeg * Math.PI / 180, P = new Float64Array(nv * 9);
+    for (let f = 0; f < 3; f++) {
+      const a = (f - 1) * th, cs = Math.cos(a), sn = Math.sin(a), dz = (f - 1) * pitch;
+      for (let i = 0; i < nv; i++) {
+        const dx = V[i * 3] - c[0], dy = V[i * 3 + 1] - c[1], o = (f * nv + i) * 3;
+        P[o] = c[0] + cs * dx - sn * dy; P[o + 1] = c[1] + sn * dx + cs * dy; P[o + 2] = V[i * 3 + 2] + dz;
+      }
+    }
+    const n3 = nv * 3;
+    // weld copies that coincide (floor seams)
+    const wid = new Int32Array(n3), tol = 1e-6 * diag, hm = new Map();
+    const key = (x, y, z) => Math.round(x / tol / 50) + ',' + Math.round(y / tol / 50) + ',' + Math.round(z / tol / 50);
+    let nw = 0;
+    for (let i = 0; i < n3; i++) { const k = key(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]); let w = hm.get(k); if (w === undefined) { w = nw++; hm.set(k, w); } wid[i] = w; }
+    // edges of the three floors, plus a shortcut across each pair of triangles
+    const E = [];
+    for (let f = 0; f < 3; f++) for (let t = 0; t < F.length; t += 3) {
+      const a = wid[f * nv + F[t]], b = wid[f * nv + F[t + 1]], d = wid[f * nv + F[t + 2]];
+      E.push(a, b, b, d, d, a);
+    }
+    { const opp = new Map();
+      for (let f = 0; f < 3; f++) for (let t = 0; t < F.length; t += 3) for (let e = 0; e < 3; e++) {
+        const a = wid[f * nv + F[t + e]], b = wid[f * nv + F[t + (e + 1) % 3]], o = wid[f * nv + F[t + (e + 2) % 3]];
+        const k = a < b ? a * nw + b : b * nw + a, q = opp.get(k);
+        if (q === undefined) opp.set(k, o); else if (q !== o) E.push(q, o);
+      } }
+    const WP = new Float64Array(nw * 3); for (let i = 0; i < n3; i++) { const w = wid[i]; WP[w * 3] = P[i * 3]; WP[w * 3 + 1] = P[i * 3 + 1]; WP[w * 3 + 2] = P[i * 3 + 2]; }
+    // coarse nodes: grid cell x connected piece inside it
+    const cell = diag / 70, cid = new Int32Array(nw), cellOf = w => Math.floor(WP[w * 3] / cell) + ',' + Math.floor(WP[w * 3 + 1] / cell) + ',' + Math.floor(WP[w * 3 + 2] / cell);
+    const ck = new Array(nw); for (let w = 0; w < nw; w++) ck[w] = cellOf(w);
+    const U = new Int32Array(nw); for (let i = 0; i < nw; i++) U[i] = i;
+    const fu = x => { while (U[x] !== x) { U[x] = U[U[x]]; x = U[x]; } return x; };
+    for (let i = 0; i < E.length; i += 2) if (ck[E[i]] === ck[E[i + 1]]) { const a = fu(E[i]), b = fu(E[i + 1]); if (a !== b) U[a] = b; }
+    const nodeOf = new Map(); let nn = 0;
+    for (let w = 0; w < nw; w++) { const r = fu(w); let n = nodeOf.get(r); if (n === undefined) { n = nn++; nodeOf.set(r, n); } cid[w] = n; }
+    const NP = new Float64Array(nn * 3), cnt = new Float64Array(nn);
+    for (let w = 0; w < nw; w++) { const n = cid[w]; NP[n * 3] += WP[w * 3]; NP[n * 3 + 1] += WP[w * 3 + 1]; NP[n * 3 + 2] += WP[w * 3 + 2]; cnt[n]++; }
+    for (let n = 0; n < nn; n++) { NP[n * 3] /= cnt[n]; NP[n * 3 + 1] /= cnt[n]; NP[n * 3 + 2] /= cnt[n]; }
+    const adj = new Map();
+    for (let i = 0; i < E.length; i += 2) {
+      const a = cid[E[i]], b = cid[E[i + 1]]; if (a === b) continue;
+      const k = a < b ? a * nn + b : b * nn + a; if (adj.has(k)) continue;
+      adj.set(k, Math.hypot(NP[a * 3] - NP[b * 3], NP[a * 3 + 1] - NP[b * 3 + 1], NP[a * 3 + 2] - NP[b * 3 + 2]));
+    }
+    const deg = new Int32Array(nn + 1); for (const k of adj.keys()) { deg[Math.floor(k / nn) + 1]++; deg[k % nn + 1]++; }
+    for (let i = 0; i < nn; i++) deg[i + 1] += deg[i];
+    const nb = new Int32Array(deg[nn]), nw8 = new Float64Array(deg[nn]), fill = deg.slice(0, nn);
+    for (const [k, w] of adj) { const a = Math.floor(k / nn), b = k % nn; nb[fill[a]] = b; nw8[fill[a]++] = w; nb[fill[b]] = a; nw8[fill[b]++] = w; }
+    // spatial grid over all welded points for the ball query
+    const gs = Rq / 6, RG = 6, grid = new Map(), gk = (x, y, z) => ((x + 2048) * 4096 + (y + 2048)) * 4096 + (z + 2048);
+    for (let w = 0; w < nw; w++) { const k = gk(Math.floor(WP[w * 3] / gs), Math.floor(WP[w * 3 + 1] / gs), Math.floor(WP[w * 3 + 2] / gs)); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(w); }
+    // cells in rings of growing distance (Chebyshev), so the search can stop once nothing nearer can bind
+    const rings = []; for (let r = 0; r <= RG; r++) { const l = []; for (let x = -r; x <= r; x++) for (let y = -r; y <= r; y++) for (let z = -r; z <= r; z++) if (Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) === r) l.push(x, y, z); rings.push(l); }
+    // tight bends: normal curvature along each edge of the own floor
+    const kLo = new Float64Array(nv), kHi = new Float64Array(nv);
+    for (let t = 0; t < F.length; t += 3) for (let e = 0; e < 3; e++) {
+      const i = F[t + e], j = F[t + (e + 1) % 3];
+      const dx = V[i * 3] - V[j * 3], dy = V[i * 3 + 1] - V[j * 3 + 1], dz = V[i * 3 + 2] - V[j * 3 + 2], l2 = dx * dx + dy * dy + dz * dz;
+      if (l2 < 1e-18) continue;
+      const k = ((N[i * 3] - N[j * 3]) * dx + (N[i * 3 + 1] - N[j * 3 + 1]) * dy + (N[i * 3 + 2] - N[j * 3 + 2]) * dz) / l2;
+      for (const v of [i, j]) { if (k < kLo[v]) kLo[v] = k; if (k > kHi[v]) kHi[v] = k; }
+    }
+    const foldP = new Float64Array(nv), foldM = new Float64Array(nv);
+    for (let i = 0; i < nv; i++) { foldP[i] = kLo[i] < 0 ? 0.9 / -kLo[i] : Infinity; foldM[i] = kHi[i] > 0 ? 0.9 / kHi[i] : Infinity; }
+    // sources: every vertex if the unit is small, else a spread subset plus the open edges
+    const es = edgeStats(F, nv), onB = new Uint8Array(nv); for (const [a, b] of es.boundary) { onB[a] = 1; onB[b] = 1; }
+    let nB = 0; for (let i = 0; i < nv; i++) nB += onB[i];
+    const stride = Math.max(1, Math.round(nv / 2000)), strideB = Math.max(1, Math.round(nB / 800)), src = [];
+    for (let i = 0, b = 0; i < nv; i++) if (onB[i] ? (b++ % strideB === 0) : i % stride === 0) src.push(i);
+    const rp = new Float64Array(nv).fill(NaN), rm = new Float64Array(nv).fill(NaN);
+    const dist = new Float64Array(nn).fill(Infinity), stamp = new Int32Array(nn).fill(-1);
+    const hq = [], hd = [];
+    const push = (n, d) => { let i = hq.length; hq.push(n); hd.push(d); while (i > 0) { const p = (i - 1) >> 1; if (hd[p] <= d) break; hq[i] = hq[p]; hd[i] = hd[p]; i = p; } hq[i] = n; hd[i] = d; };
+    const pop = () => { const n = hq[0], d0 = hd[0], ln = hq.pop(), ld = hd.pop(); if (hq.length) { let i = 0; for (;;) { const a = 2 * i + 1, b = a + 1; let m = -1; if (a < hq.length) m = a; if (b < hq.length && hd[b] < hd[a]) m = b; if (m < 0 || hd[m] >= ld) break; hq[i] = hq[m]; hd[i] = hd[m]; i = m; } hq[i] = ln; hd[i] = ld; } return [n, d0]; };
+    const lim = 1.6 * Rq + add + 2 * cell;
+    let tick = performance.now();
+    for (let si = 0; si < src.length; si++) {
+      const v = src[si], w0 = wid[nv + v], n0 = cid[w0];
+      // paths along the surface from this point (coarse)
+      hq.length = 0; hd.length = 0; dist[n0] = 0; stamp[n0] = si; push(n0, 0);
+      while (hq.length) {
+        const [n, d] = pop(); if (d > dist[n] || d > lim) continue;
+        for (let j = deg[n]; j < deg[n + 1]; j++) { const m = nb[j], nd = d + nw8[j]; if (stamp[m] !== si || nd < dist[m]) { stamp[m] = si; dist[m] = nd; if (nd <= lim) push(m, nd); } }
+      }
+      const px = WP[w0 * 3], py = WP[w0 * 3 + 1], pz = WP[w0 * 3 + 2], nx = N[v * 3], ny = N[v * 3 + 1], nz = N[v * 3 + 2];
+      let sp = Infinity, sm = Infinity;
+      const gx = Math.floor(px / gs), gy = Math.floor(py / gs), gz = Math.floor(pz / gs);
+      for (let r = 0; r <= RG; r++) {
+        // every point not yet looked at is at least (r - 1) cells away; it can only allow rho * d / 2 or more
+        if (r >= 2 && rho * (r - 1) * gs / 2 >= Math.max(sp, sm)) break;
+        const ring = rings[r];
+        for (let ci = 0; ci < ring.length; ci += 3) {
+        const l = grid.get(gk(gx + ring[ci], gy + ring[ci + 1], gz + ring[ci + 2])); if (!l) continue;
+        for (const q of l) {
+          const dx = px - WP[q * 3], dy = py - WP[q * 3 + 1], dz = pz - WP[q * 3 + 2], a = dx * dx + dy * dy + dz * dz;
+          if (a > Rq * Rq || a < seam * seam) continue;
+          const eu = Math.sqrt(a), m = cid[q], gd = stamp[m] === si ? dist[m] : Infinity;
+          if (gd <= 1.6 * eu + add) continue;                       // same sheet, nearby along the surface
+          const cdot = dx * nx + dy * ny + dz * nz;                 // (P - q) . n
+          if (-cdot > 1e-12) sp = Math.min(sp, rho * a / (2 * -cdot));   // q lies in front of the +n side
+          else if (cdot > 1e-12) sm = Math.min(sm, rho * a / (2 * cdot));
+        }
+        }
+      }
+      rp[v] = sp; rm[v] = sm;
+      if (progress && performance.now() - tick > 60) { tick = performance.now(); progress(si / src.length); await new Promise(r => setTimeout(r, 0)); }
+    }
+    // every other vertex takes the value of the nearest source along the mesh
+    const own = new Int32Array(nv).fill(-1), od = new Float64Array(nv).fill(Infinity), nbr = Array.from({ length: nv }, () => []);
+    for (let t = 0; t < F.length; t += 3) for (let e = 0; e < 3; e++) { const a = F[t + e], b = F[t + (e + 1) % 3]; nbr[a].push(b); nbr[b].push(a); }
+    hq.length = 0; hd.length = 0;
+    for (const v of src) { own[v] = v; od[v] = 0; push(v, 0); }
+    while (hq.length) {
+      const [i, d] = pop(); if (d > od[i]) continue;
+      for (const j of nbr[i]) { const nd = d + Math.hypot(V[i * 3] - V[j * 3], V[i * 3 + 1] - V[j * 3 + 1], V[i * 3 + 2] - V[j * 3 + 2]); if (nd < od[j]) { od[j] = nd; own[j] = own[i]; push(j, nd); } }
+    }
+    const RP = new Float32Array(nv), RM = new Float32Array(nv), fit = new Float32Array(nv);
+    for (let i = 0; i < nv; i++) {
+      const s = own[i] >= 0 ? own[i] : i;
+      const a = isFinite(rp[s]) ? Math.min(rp[s], foldP[i]) : Infinity, b = isFinite(rm[s]) ? Math.min(rm[s], foldM[i]) : Infinity;
+      RP[i] = a; RM[i] = b;
+      // the largest wall that fits here without changing the form: an outward side takes at most half
+      fit[i] = isFinite(a) && isFinite(b) ? a + b : isFinite(a) ? 2 * Math.min(a, foldM[i]) : isFinite(b) ? 2 * Math.min(b, foldP[i]) : Math.min(foldP[i], foldM[i]) * 2;
+    }
+    const sorted = Float32Array.from(fit).sort();
+    const p5 = sorted[Math.floor(0.05 * (nv - 1))];
+    if (progress) progress(1);
+    return { rp: RP, rm: RM, fit, fit95: p5, foldP, foldM, rho, sources: src.length };
+  }
+
+  // per-vertex walls (file units) on each side for a wanted total t: each side gets half, a side that
+  // has no room passes what it cannot take to the other side (if that side faces another part, not outward);
+  // rooms are scaled by sc (the floor's scale, per vertex). Returns { a, b, thin } aligned with the field.
+  function formWalls(field, idx, t, sc, F) {
+    const n = idx.length, a = new Float64Array(n), b = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const j = idx[i], q = sc ? sc[i] : 1;
+      const rp = isFinite(field.rp[j]) ? field.rp[j] * q : Math.min(t / 2, field.foldP[j] * q);
+      const rm = isFinite(field.rm[j]) ? field.rm[j] * q : Math.min(t / 2, field.foldM[j] * q);
+      const a0 = Math.min(t / 2, rp), b0 = Math.min(t / 2, rm);
+      const a1 = Math.min(rp, t - b0), b1 = Math.min(rm, t - a1);
+      a[i] = a1; b[i] = b1;
+    }
+    // two passes of min-smoothing over the mesh, so the wall does not jump between neighbours
+    if (F) for (let it = 0; it < 2; it++) {
+      for (const X of [a, b]) {
+        const sum = new Float64Array(n), c = new Float64Array(n);
+        for (let k = 0; k < F.length; k += 3) for (let e = 0; e < 3; e++) { const p = F[k + e], q = F[k + (e + 1) % 3]; sum[p] += X[q]; c[p]++; sum[q] += X[p]; c[q]++; }
+        for (let i = 0; i < n; i++) if (c[i]) X[i] = Math.min(X[i], 0.5 * X[i] + 0.5 * sum[i] / c[i]);
+      }
+    }
+    const thin = new Uint8Array(n); let nThin = 0;
+    for (let i = 0; i < n; i++) if (a[i] + b[i] < 0.95 * t) { thin[i] = 1; nThin++; }
+    return { a, b, thin, nThin };
+  }
+  // nearest vertex of a point set (for carrying per-vertex values onto the cut halves)
+  function nearestIndex(VA, VB) {
+    const bb = bbox(VA), cs = (Math.hypot(...bb.size) || 1) / 200, g = new Map(), k = (x, y, z) => x + ',' + y + ',' + z;
+    for (let i = 0; i < VA.length / 3; i++) { const kk = k(Math.floor(VA[i * 3] / cs), Math.floor(VA[i * 3 + 1] / cs), Math.floor(VA[i * 3 + 2] / cs)); let l = g.get(kk); if (!l) g.set(kk, l = []); l.push(i); }
+    const out = new Int32Array(VB.length / 3);
+    for (let i = 0; i < out.length; i++) {
+      const x = VB[i * 3], y = VB[i * 3 + 1], z = VB[i * 3 + 2], gx = Math.floor(x / cs), gy = Math.floor(y / cs), gz = Math.floor(z / cs);
+      let best = -1, bd = Infinity;
+      for (let r = 0; r < 4 && best < 0; r++)
+        for (let ix = gx - r; ix <= gx + r; ix++) for (let iy = gy - r; iy <= gy + r; iy++) for (let iz = gz - r; iz <= gz + r; iz++) {
+          const l = g.get(k(ix, iy, iz)); if (!l) continue;
+          for (const j of l) { const d = (VA[j * 3] - x) ** 2 + (VA[j * 3 + 1] - y) ** 2 + (VA[j * 3 + 2] - z) ** 2; if (d < bd) { bd = d; best = j; } }
+        }
+      out[i] = best < 0 ? 0 : best;
+    }
+    return out;
   }
 
   // ---------------- plate packing ----------------
@@ -1154,7 +1399,7 @@ const Core = (() => {
     return t.join('\n');
   }
 
-  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, envScale, floors, scaleAt, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, printability, bedPlane, segmentFloor, addLabel, glyphRects, zipEntry, zipBlobParts, crc32, assemblySVG, footprintMask, rotMask, packPlates, placeOnPlate };
+  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, envScale, floors, scaleAt, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, printability, bedPlane, segmentFloor, addLabel, formField, formWalls, nearestIndex, glyphRects, zipEntry, zipBlobParts, crc32, assemblySVG, footprintMask, rotMask, packPlates, placeOnPlate };
 })();
 if (typeof module !== 'undefined') module.exports = Core;
 // ===================== CORE-END =====================
@@ -1196,6 +1441,11 @@ const I18N = {
     hud: '{n} 层 · 总高 {H} m · 扭转 {d}°',
     printClosed: '分件需要开放面单体（闭合实体暂不支持切半）', print1: '每层切成上下两半（单体中线），自动选朝下的面',
     upEnd: '已翻面，顶面朝下', upCut: '切面朝下', loEnd: '底面朝下', loCut: '已翻面，切面朝下', tagNote: ' · 层号在旁边的小号牌上', progSetup: '比较朝向…',
+    formKeep: '保形', on: '开', off: '关', formNote: '开口和缝至少保留 80%：比例按壁厚自动算，壁和曲面的比例不变',
+    formOffNote: '关：壁厚按毫米均匀加，比例自己定（和以前一样）', formBusy: '保形计算中 {p}%…', formTagAuto: '自动', formTagManual: '手动', formTagTip: '点一下改回自动比例',
+    formRead: '塔高 {H} mm · 单片 {w} mm', formThin: '{p}% 的窄处按形收薄（最薄约 {m} mm），预览里标成橙色', formThinNone: '壁处处是 {t} mm',
+    formManual: '手动比例：这个比例下壁最多约 {m} mm，再厚的地方按形收薄', formTooBig: '单片放不进 A1：保形时壁最厚 {m} mm', formFixWall: '壁厚改成 {m} mm',
+    recSeg: '推荐整段打印（塔不细）', recPieces: '推荐分件打印（塔细长：高是宽的 {r} 倍）',
     segTitle: '整段打印', btnSeg: '导出整段 STL', segRead: '{n} 段 · 每段 {f} 层 · 高 {h} mm', segRead1: '整塔 1 件 · {f} 层 · 高 {h} mm', segNote: '立着打印，层与层已经连在一起；曲面下方悬空的地方要在切片软件里开支撑。',
     segOnlyConn: '只用于衔接型单体（上下层的边能对上）。', segGap: '净高为 0 时才能整段打印。', segTall: '一层就超过 250 mm 高，请换小一点的比例。', segProg: '段 {s}/{n} · 层 {i}/{m}', segDone: '已导出 {n} 段', segFile: '段', segFloors: '{a}-{b}层', segWord: '整段',
     segN1: '单体塔楼 · 整段打印', segN2: '共 {n} 段，都按塔里的方向导出：从下往上按段号粘合，段与段之间不用再转角度。',
@@ -1252,6 +1502,11 @@ const I18N = {
     hud: '{n} floors · height {H} m · twist {d}°',
     printClosed: 'Print parts need an open-surface unit (closed solids cannot be cut in half yet)', print1: 'Each floor is cut in half at mid-height; the face that goes down is chosen automatically',
     upEnd: 'flipped, top face down', upCut: 'cut face down', loEnd: 'bottom face down', loCut: 'flipped, cut face down', tagNote: ' · floor number on the tag beside it', progSetup: 'Comparing orientations…',
+    formKeep: 'Keep form', on: 'On', off: 'Off', formNote: 'Openings and slits keep at least 80 %: the scale follows the wall, so wall and surface keep their proportion',
+    formOffNote: 'Off: an even wall in mm at a scale you choose (as before)', formBusy: 'Measuring the form {p}%…', formTagAuto: 'Auto', formTagManual: 'Manual', formTagTip: 'Click to go back to the automatic scale',
+    formRead: 'Tower {H} mm tall · pieces {w} mm', formThin: '{p}% narrow spots get a thinner wall to keep the form (down to about {m} mm) — orange in the preview', formThinNone: 'The wall is {t} mm everywhere',
+    formManual: 'Manual scale: at this scale the wall can be about {m} mm; thicker spots are thinned to keep the form', formTooBig: 'Pieces do not fit the A1: with the form kept the wall can be at most {m} mm', formFixWall: 'Set the wall to {m} mm',
+    recSeg: 'Printing in segments is recommended (the tower is not slender)', recPieces: 'Printing in parts is recommended (slender tower: {r}× taller than wide)',
     segTitle: 'Print in segments', btnSeg: 'Export segment STL', segRead: '{n} segments · {f} floors each · {h} mm tall', segRead1: 'Whole tower in 1 piece · {f} floors · {h} mm tall', segNote: 'Printed upright, floors already joined; turn on supports in the slicer for the overhanging undersides.',
     segOnlyConn: 'Only for joining units (floors that meet edge to edge).', segGap: 'Needs clear height 0.', segTall: 'One floor is already taller than 250 mm — choose a smaller scale.', segProg: 'Segment {s}/{n} · floor {i}/{m}', segDone: 'Exported {n} segment(s)', segFile: 'segment', segFloors: 'floors{a}-{b}', segWord: 'segments',
     segN1: 'Unit Tower · segments', segN2: '{n} segments, all exported in the tower\'s own orientation: glue bottom-up by number, no turning between segments.',
@@ -1309,7 +1564,7 @@ function applyVis(cb, lines) {
   $('legend').classList.toggle('hidden', !(cb > 0.5) || PR.preview || PR.plate);
   $('legA').textContent = '1.00'; $('legB').textContent = (S.minR).toFixed(2);
 }
-const PR = { den: 500, wall: 1.2, labels: true, preview: 0, margin: 10, gap: 6, plate: 0 };
+const PR = { den: 500, wall: 1.2, labels: true, preview: 0, margin: 10, gap: 6, plate: 0, form: false, formAuto: true, denAuto: true };
 let packCache = null;
 let halves = null;
 let raw = null, fileName = '', sampleKind = 'slab', baseMesh = null, geo = null;
@@ -1343,6 +1598,9 @@ function rebuild() {
   }
   if (S.scaleAuto) S.scale = SNAP.kind === 'conn' ? 'cont' : 'step';
   syncSeg('segScale', 'scale');
+  // 保形：衔接型（目录里的极小曲面）默认开，独立单体（示例楼板）默认关
+  if (PR.formAuto) PR.form = SNAP.kind === 'conn' && !!thick;
+  syncForm();
   halves = null;
   PR.preview = 0;
   packCache = null; setupCache = null; pieceCache.clear();
@@ -1531,6 +1789,91 @@ function update(refit, keepPlay) {
   R.draw();
 }
 
+// ---------- 保形（办法 B）----------
+// 每一处两侧还有多少空间，只和单体、基点、扭转角、层距有关：在后台算一次，之后改壁厚、比例都是实时的
+const FORM = { key: '', field: null, busy: false, p: 0, timer: 0, want: '' };
+const formKey = () => geo && baseMesh ? JSON.stringify([fileName, sampleKind, S.unit, S.upY, S.pivot, S.step, +params().pitch.toFixed(6), baseMesh.V.length]) : '';
+const formReady = () => PR.form && FORM.field && FORM.key === formKey();
+function scheduleForm() {
+  if (!PR.form || !geo || !geo.thick) return;
+  const k = formKey();
+  if (FORM.key === k && FORM.field) return;
+  FORM.want = k;
+  clearTimeout(FORM.timer);
+  FORM.timer = setTimeout(runForm, 350);
+}
+async function runForm() {
+  if (FORM.busy) { FORM.timer = setTimeout(runForm, 200); return; }
+  const k = formKey(); if (!PR.form || !k || (FORM.key === k && FORM.field)) return;
+  FORM.busy = true; FORM.p = 0; FORM.field = null; FORM.key = '';
+  updateFormRead();
+  try {
+    const f = await Core.formField(baseMesh.V, baseMesh.F, geo.c, S.step, params().pitch, 0.2, p => { FORM.p = p; updateFormRead(); });
+    if (formKey() === k) { FORM.field = f; FORM.key = k; if (halves) { halves.idx = null; } }
+  } catch (e) { console.error(e); }
+  FORM.busy = false;
+  packCache = null; setupCache = null; pieceCache.clear();
+  if (formKey() !== k) scheduleForm();
+  update(false);
+}
+// the wall that fits 95 % of the whole tower (every floor at its own scale: the waist floors are smaller,
+// so are their gaps), file units; cached per form field and waist settings
+let fitCache = { key: '', v: 0 };
+function towerFit95() {
+  const key = JSON.stringify([FORM.key, S.count, S.minR, S.curve, S.scale]);
+  if (fitCache.key === key) return fitCache.v;
+  const f = FORM.field, fl = Core.floors(params()), V0 = baseMesh.V, n = f.fit.length;
+  const step = Math.max(1, Math.floor(fl.length * n / 400000));          // sample very large towers
+  const vals = new Float32Array(Math.ceil(fl.length * n / step)); let m = 0, c = 0;
+  for (const fr of fl) for (let i = 0; i < n; i++) { if (c++ % step) continue; vals[m++] = f.fit[i] * (fr.env ? Core.scaleAt(fr, V0[i * 3 + 2]) : fr.s); }
+  const v = vals.subarray(0, m).sort()[Math.floor(0.05 * (m - 1))];
+  fitCache = { key, v };
+  return v;
+}
+// the scale that keeps the form at this wall, rounded down to a multiple of 5 (a slightly larger model)
+function formDen() {
+  const raw = 1000 * S.unit * towerFit95() / PR.wall;
+  return Math.max(1, Math.min(1000, raw >= 10 ? Math.floor(raw / 5) * 5 : Math.floor(raw)));
+}
+function halvesIdx() {
+  const hv = getHalves();
+  if (!hv.idx) hv.idx = { hi: Core.nearestIndex(baseMesh.V, hv.hi.V), lo: Core.nearestIndex(baseMesh.V, hv.lo.V) };
+  return hv.idx;
+}
+const formOpt = () => formReady() ? { field: FORM.field, idx: halvesIdx() } : null;
+function syncForm() {
+  for (const b of $('segForm').querySelectorAll('button')) b.classList.toggle('on', (b.dataset.v === '1') === !!PR.form);
+}
+function updateFormRead(pl) {
+  const box = $('readForm'), tag = $('denTag');
+  if (!PR.form) { box.textContent = t('formOffNote'); tag.textContent = ''; return; }
+  tag.textContent = t(PR.denAuto ? 'formTagAuto' : 'formTagManual');
+  tag.className = 'tag' + (PR.denAuto ? ' conn' : ' manual'); tag.title = PR.denAuto ? '' : t('formTagTip');
+  if (!formReady()) { box.textContent = t('formBusy', { p: Math.round(FORM.p * 100) }); return; }
+  const f = FORM.field, k = printFactor(), bb0 = Core.bbox(baseMesh.V);
+  const H = ((S.count - 1) * params().pitch + geo.h) * k, w = Math.max(bb0.size[0], bb0.size[1]) * k + PR.wall;
+  // share of the tower (all floors; the waist floors are smaller, so their gaps are too) where the wall is thinned
+  // the wall each spot actually gets (same rule as the pieces: half each side, what one side cannot take goes to the other)
+  const tf = PR.wall / k, fl = Core.floors(params()), V0 = baseMesh.V; let n = 0, tot = 0, thinMin = Infinity;
+  const step = Math.max(1, Math.floor(fl.length * f.fit.length / 400000)); let c = 0;
+  for (const fr of fl) for (let i = 0; i < f.fit.length; i++) {
+    if (c++ % step) continue;
+    const sc = fr.env ? Core.scaleAt(fr, V0[i * 3 + 2]) : fr.s;
+    const rp = isFinite(f.rp[i]) ? f.rp[i] * sc : Math.min(tf / 2, f.foldP[i] * sc), rm = isFinite(f.rm[i]) ? f.rm[i] * sc : Math.min(tf / 2, f.foldM[i] * sc);
+    const b0 = Math.min(tf / 2, rm), a1 = Math.min(rp, tf - b0), w = a1 + Math.min(rm, tf - a1);
+    tot++; if (w < 0.95 * tf) { n++; if (w < thinMin) thinMin = w; }
+  }
+  const pc = 100 * n / tot;
+  let h = t('formNote') + '<br>' + t('formRead', { H: fmt(H, 0), w: fmt(w, 0) }) + '<br>' +
+    (pc >= 0.5 ? `<span class="hotdot"></span>${t('formThin', { p: fmt(pc, pc < 10 ? 1 : 0), m: fmt(Math.max(0, thinMin) * k, 2) })}` : t('formThinNone', { t: fmt(PR.wall, 1) }));
+  if (!PR.denAuto) h += `<br><span class="caution">${t('formManual', { m: fmt(towerFit95() * k, 2) })}</span>`;
+  if (pl && pl.formMax !== undefined) h += `<br><span class="warn">${t('formTooBig', { m: fmt(pl.formMax, 1) })}</span><br><button class="btn fixbtn" id="btnFormWall" type="button">${t('formFixWall', { m: fmt(pl.formMax, 1) })}</button>`;
+  const slender = H / Math.max(1e-9, w - PR.wall);
+  if (segPlan().ok) h += '<br>' + (slender > 15 ? t('recPieces', { r: fmt(slender, 0) }) : t('recSeg'));
+  box.innerHTML = h;
+  const fb = $('btnFormWall'); if (fb) fb.onclick = () => wallSlider.set(pl.formMax);
+}
+
 // ---------- print parts ----------
 const PLATE = 256, MARGIN = 5, GAP = 6;
 function printFactor() { return S.unit * 1000 / PR.den; }              // mm per file unit
@@ -1581,10 +1924,22 @@ function updateSeg(fits) {
 function updatePrint(fl) {
   const ok = !geo.es.closed && geo.thick;
   $('btnPrev').disabled = $('btnPrint').disabled = $('btnPlates').disabled = !ok;
-  syncScale();
+  if (ok && PR.form) scheduleForm();
+  // 保形 + 自动：比例按壁厚算；算出来比 A1 能放下的还大，就用 A1 能放下的最大比例，并提示壁最多多厚
+  let formMax;
+  if (ok && formReady() && PR.denAuto) {
+    PR.den = formDen();
+    const p0 = plan(fl);
+    if (PR.den < p0.minDen && p0.minDen <= 1000) { formMax = Math.floor(towerFit95() * S.unit * 1000 / p0.minDen * 10) / 10; PR.den = p0.minDen; }
+  }
+  syncScale(); $('st3s').textContent = t('st3s', { d: PR.den });
+  updateFormRead(formMax !== undefined ? { formMax } : null);
   if (!ok) { $('readPrint').innerHTML = `<span class="warn">${t('printClosed')}</span>`; updateSeg(false); return; }
   const pl = plan(fl);
-  updateSeg(pl.fits);
+  const waiting = PR.form && !formReady();
+  if (waiting) $('btnPrev').disabled = $('btnPlates').disabled = true;
+  updateSeg(pl.fits && !waiting);
+  if (waiting) $('btnPrint').disabled = true;
   // 放不下：排盘和导出变灰（排盘视图里「返回塔楼」照常能点），并给一键改到刚好放得下的比例
   if (!pl.fits) { $('btnPrint').disabled = true; if (!PR.plate) $('btnPlates').disabled = true; }
   $('sclHint').innerHTML = pl.minDen <= 1000 ? t('sclMin', { d: pl.minDen }) : t('sclNone');
@@ -1597,10 +1952,11 @@ function updatePrint(fl) {
       : `<br><span class="warn">${t('tooBig2', { a: fmt(pl.maxD, 0), mm: fmt(pl.room, 0) })}</span>` +
         (pl.minDen <= 1000 ? `<br><button class="btn fixbtn" id="btnFitScale" type="button">${t('fitScale', { d: pl.minDen })}</button>` : `<br><span class="warn">${t('sclNone')}</span>`));
   const fb = $('btnFitScale'); if (fb) fb.onclick = () => setScale(pl.minDen);
+  if (formMax !== undefined) $('btnPrint').disabled = true;
   $('nPrev').max = S.count;
 }
 function packKey() {
-  return JSON.stringify([fileName, S.unit, S.upY, S.count, S.minR, S.curve, S.thick, PR.den, PR.wall, PR.margin, PR.gap, S.scale, S.scale === 'cont' ? S.gap : 0, S.pivot, PR.labels, SNAP.kind]);
+  return JSON.stringify([fileName, S.unit, S.upY, S.count, S.minR, S.curve, S.thick, PR.den, PR.wall, PR.margin, PR.gap, S.scale, S.scale === 'cont' ? S.gap : 0, S.pivot, PR.labels, SNAP.kind, formReady() ? FORM.key : 0, S.step]);
 }
 // 每种半片（上半 / 下半）定一次：哪一面朝下（比较两种朝向的悬空和贴盘面积），层号压在零件上还是做成旁边的小号牌
 let setupCache = null;
@@ -1610,7 +1966,8 @@ function printSetup() {
   const fl = Core.floors(params()), hv = getHalves(), k = printFactor(), flat = geo.flat || null;
   let iMax = 0, iMin = 0;
   fl.forEach((f, i) => { if (f.s > fl[iMax].s) iMax = i; if (f.lo < fl[iMin].lo) iMin = i; });
-  const mk = (i, cutDown, tag) => Core.printPieces(hv, geo.c, floorScale(fl[i]), k, PR.wall, i + 1, PR.labels, 5, { flat, cutDown, tag });
+  const form = formOpt();
+  const mk = (i, cutDown, tag) => Core.printPieces(hv, geo.c, floorScale(fl[i]), k, PR.wall, i + 1, PR.labels, 5, { flat, cutDown, tag, form });
   const A = mk(iMax, { upper: false, lower: false }), B = mk(iMax, { upper: true, lower: true });
   const cutDown = {}, tag = {}, stat = {};
   for (const h of ['upper', 'lower']) {
@@ -1625,7 +1982,7 @@ function printSetup() {
   }
   return setupCache = { key, cutDown, tag, flat, stat };
 }
-const pieceOpt = () => { const su = printSetup(); return { flat: su.flat, cutDown: su.cutDown, tag: su.tag }; };
+const pieceOpt = () => { const su = printSetup(); return { flat: su.flat, cutDown: su.cutDown, tag: su.tag, form: formOpt() }; };
 const faceText = (h, su) => t(h === 'upper' ? (su.cutDown.upper ? 'upCut' : 'upEnd') : (su.cutDown.lower ? 'loCut' : 'loEnd'));
 async function ensurePacked(progress) {
   const key = packKey();
@@ -1666,13 +2023,13 @@ function pieceByName(name, fl) {
   return h === 1 ? P.upper : P.lower;
 }
 function plateMesh(list, fl) {
-  const parts = list.map(it => { const pc = pieceByName(it.name, fl); return { V: Core.placeOnPlate(pc.V, it.deg, it.dx, it.dy), F: pc.F, placed: pc.placed }; });
+  const parts = list.map(it => { const pc = pieceByName(it.name, fl); return { V: Core.placeOnPlate(pc.V, it.deg, it.dx, it.dy), F: pc.F, placed: pc.placed, hot: pc.hot }; });
   let nv = 0, nf = 0;
   for (const p of parts) { nv += p.V.length; nf += p.F.length; }
-  const V = new Float64Array(nv), F = new Uint32Array(nf);
+  const V = new Float64Array(nv), F = new Uint32Array(nf), SD = new Float32Array(nv / 3).fill(1);
   let ov = 0, of = 0;
-  for (const p of parts) { V.set(p.V, ov); for (let i = 0; i < p.F.length; i++) F[of + i] = p.F[i] + ov / 3; ov += p.V.length; of += p.F.length; }
-  return { V, F, missing: list.filter((it, i) => PR.labels && !parts[i].placed).map(it => it.name) };
+  for (const p of parts) { V.set(p.V, ov); if (p.hot) for (let j = 0; j < p.hot.length; j++) if (p.hot[j]) SD[ov / 3 + j] = 2; for (let i = 0; i < p.F.length; i++) F[of + i] = p.F[i] + ov / 3; ov += p.V.length; of += p.F.length; }
+  return { V, F, side: SD, missing: list.filter((it, i) => PR.labels && !parts[i].placed).map(it => it.name) };
 }
 function renderChips() {
   const box = $('plateChips');
@@ -1718,7 +2075,10 @@ function showPreview(n) {
   const F = new Uint32Array(a.F.length + b.F.length);
   F.set(a.F); const nA = a.V.length / 3;
   for (let j = 0; j < b.F.length; j++) F[a.F.length + j] = b.F[j] + nA;
-  const g = { V, F, c: [0, 0, 0], bb: Core.bbox(V) };
+  const SD = new Float32Array(V.length / 3).fill(1);
+  if (a.hot) for (let j = 0; j < a.hot.length; j++) if (a.hot[j]) SD[j] = 2;
+  if (b.hot) for (let j = 0; j < b.hot.length; j++) if (b.hot[j]) SD[nA + j] = 2;
+  const g = { V, F, c: [0, 0, 0], bb: Core.bbox(V), side: SD };
   PR.preview = i + 1; PR.plate = 0;
   R.setPlate(null);
   applyVis(0, false);
@@ -1752,11 +2112,12 @@ const wallSlider = (() => {
   const paint = () => r.style.setProperty('--p', (r.value - r.min) / (r.max - r.min) * 100 + '%');
   const set = (v, from) => { v = Math.max(0.4, Math.min(5, +v)); if (!isFinite(v)) return; PR.wall = v; if (from !== n) n.value = v; if (from !== r) r.value = v; paint(); update(false); };
   r.addEventListener('input', () => set(r.value, r)); n.addEventListener('change', () => set(n.value, n));
-  return { sync() { n.value = PR.wall; r.value = PR.wall; paint(); } };
+  return { sync() { n.value = PR.wall; r.value = PR.wall; paint(); }, set: v => set(v, null) };
 })();
 // 打印比例：自由输入 1–1000（整数）。回车或离开输入框才生效；超出范围夹到 1 / 1000，非数字恢复原值
 function syncScale() { const n = $('nScale'); if (n && document.activeElement !== n) n.value = PR.den; }
-function setScale(v) {
+function setScale(v, auto) {
+  if (!auto && PR.form) PR.denAuto = false;
   let d = Math.round(+v);
   if (!isFinite(d) || String(v).trim() === '') d = PR.den;
   d = Math.max(1, Math.min(1000, d));
@@ -1764,6 +2125,12 @@ function setScale(v) {
   if (changed) update(false);
 }
 $('nScale').addEventListener('change', e => setScale(e.target.value));
+$('segForm').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  PR.form = b.dataset.v === '1'; PR.formAuto = false; if (PR.form) PR.denAuto = true;
+  syncForm(); packCache = null; setupCache = null; pieceCache.clear(); update(false);
+});
+$('denTag').addEventListener('click', () => { if (!PR.form || PR.denAuto) return; PR.denAuto = true; packCache = null; update(false); });
 $('nScale').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
 for (const [id, sg] of [['sclDn', -1], ['sclUp', 1]]) $(id).addEventListener('click', e => setScale(PR.den + sg * (e.shiftKey ? 100 : 10)));
 for (const [id, fn] of [['segLabel', v => { PR.labels = v === '1'; }], ['segShade', v => { VIS.colour = v === '1'; VIS.pal = v === '2'; }], ['segEnv', v => { VIS.lines = v === '1'; }]]) {
@@ -1829,7 +2196,7 @@ function loadBuffer(buf, name, quiet) {
   try { pos = Core.parseSTL(buf); } catch (e) { pos = null; }
   if (!pos || pos.length < 9) { toast(t('notStl')); return false; }
   raw = pos; fileName = name; sampleKind = name ? null : sampleKind;
-  S.scaleAuto = true;                    // 新载入的单体先按自动识别；记住的手动选择由 restoreParams 再放回来
+  S.scaleAuto = true; PR.formAuto = true; PR.denAuto = true;                    // 新载入的单体先按自动识别；记住的手动选择由 restoreParams 再放回来
   S.unit = guessUnit(pos);
   S.gap = defaultGap(pos, S.unit, S.upY);
   syncAll();
@@ -1840,7 +2207,7 @@ function loadBuffer(buf, name, quiet) {
 function loadSample() {
   if (META) Object.assign(S, GH);
   META = null;
-  raw = Core.samplePlate(); fileName = ''; sampleKind = 'slab'; S.unit = 1; S.upY = false; S.scaleAuto = true;
+  raw = Core.samplePlate(); fileName = ''; sampleKind = 'slab'; S.unit = 1; S.upY = false; S.scaleAuto = true; PR.formAuto = true; PR.denAuto = true;
   S.gap = defaultGap(raw, 1, false);
   syncAll(); rebuild();
 }
@@ -2026,7 +2393,7 @@ $('btnSeg').onclick = async () => {
       for (let i = a; i < b; i++) {
         btn.textContent = t('segProg', { s: q + 1, n: sp.n, i: i - a + 1, m: b - a });
         await new Promise(r => setTimeout(r, 0));
-        const g = Core.segmentFloor(baseMesh.V, baseMesh.F, geo.c, fl[i], k, PR.wall, geo.flat, fl[a].z, i > a ? 0.01 : 0, i < b - 1 ? 0.01 : 0);
+        const g = Core.segmentFloor(baseMesh.V, baseMesh.F, geo.c, fl[i], k, PR.wall, geo.flat, fl[a].z, i > a ? 0.01 : 0, i < b - 1 ? 0.01 : 0, formReady() ? FORM.field : null);
         parts.push(g); nv += g.V.length; nf += g.F.length;
       }
       const V = new Float64Array(nv), F = new Uint32Array(nf);
@@ -2175,6 +2542,7 @@ const R = (() => {
       float rim=pow(1.0-max(dot(n,v),0.0),3.0);
       vec3 base=mix(vec3(0.42,0.42,0.44), vec3(0.96,0.96,0.97), vT);
       base=mix(base, mix(uPB, uPF, clamp(vSd,0.0,1.0)), uPal);
+      base=mix(base, vec3(1.0,0.62,0.04), clamp(vSd-1.0,0.0,1.0));   // 保形：壁按形收薄的地方
       float kS=clamp((1.0-vS)/max(1.0-uSmin,1e-3),0.0,1.0);
       base=mix(base, mix(vec3(0.93,0.93,0.95), vec3(1.0,0.416,0.239), kS), uCB);
       vec3 col=base*(0.22+0.18*hemi+0.62*d)+rim*0.18;
@@ -2532,7 +2900,7 @@ function updateRead() {
 $('segLang').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLang(b.dataset.v); });
 setMode(MODE, true);
 applyStatic();
-window.__app = { S, Core, SNAP, PR, params, piecesFor, printSetup, segPlan, get geo() { return geo; }, get base() { return baseMesh; }, loadBuffer, rebuild, unpackUnit, gunzip, STORE };
+window.__app = { S, Core, SNAP, PR, FORM, formReady, params, piecesFor, printSetup, segPlan, get geo() { return geo; }, get base() { return baseMesh; }, loadBuffer, rebuild, unpackUnit, gunzip, STORE };
 init();
 })();
 </script>
