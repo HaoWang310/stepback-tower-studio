@@ -15,6 +15,14 @@ Export: STL (merged), OBJ and 3DM (one object per floor), in the units of the up
 
 Single file, no build step; preview uses plain WebGL2 instancing.
 
+**Waist scaling: Stepped / Continuous** (Waist section, under Curve).
+
+- *Stepped* (逐层) is the gh's Scale NU: one scale per floor, so a floor's top edge and the next floor's bottom edge differ by one scale step (for 20 floors and minimum 0.62 that is 4.2 % of the radius — 0.31 m on catalogue surface 001).
+- *Continuous* (连续) scales every point by the waist outline at its own height: `s(q) = 1 − (1 − min)·u` (linear) or `1 − (1 − min)·(1 − cos πu)/2` (smooth), with `u = 1 − |2q − 1|` and `q` = height / tower height. Bottom and top are 1, mid-height is the minimum, and a floor's top edge has the same scale as the next floor's bottom edge, so the seams line up. With fewer than 3 floors there is no waist, as before.
+- The default is picked automatically when a unit is loaded, from the same measurement as the floor-joint ticks: a unit is **joining** when its top and bottom are cut edges (no horizontal faces on the top or bottom plane) and some twist angle brings ≥ 90 % of the top edge onto the bottom edge → Continuous. Everything else is a **separate** unit → Stepped (the sample unit and the sample slab are separate, so they stay exactly like the gh). A small tag next to the control shows the result (Auto · joining / Auto · separate).
+- Choosing by hand turns the tag into *Manual* and is remembered per model; clicking the tag goes back to automatic. A note appears when Continuous cannot help (the twist is not at a joining angle, or the unit is separate and its vertical faces would slant) or when Stepped leaves a step on a joining unit.
+- It applies everywhere: the view, waist colour and outline, Play, STL / OBJ / 3DM export, print pieces and plate packing. The print wall is still added after scaling, so it stays constant.
+
 **Play** (▶ in the top-right of the view): a 12 s generation sequence — unit (Offset Mesh) → floors drop in one by one (Series + Move) → waist (Series + Reverse List + Merge → Scale NU, about each floor's centroid) → twist (Series → Rotate) — with captions naming the gh components, then a continuous orbit (20 s per turn, gentle up-and-down). Dragging pauses the camera for 2 s; changing a parameter stops it.
 
 **Waist display**: the waist is easy to lose behind the twist (arm orientation changes the silhouette by up to ~29 % floor to floor), so the view draws a waist outline — orange profile lines facing the camera at radius = farthest point of the unit × floor scale, plus dashed rings at the bottom, narrowest and top floors (toggle in the Waist section). A second toggle colours floors by scale (white → orange, with legend). During Play the waist stage colours the tower and shows the outline, the colour fades back to white during the twist, and the orbit shows the white model with the outline. Display only; exports are unaffected.
