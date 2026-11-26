@@ -173,7 +173,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       <div class="row"><label data-i18n="curve"></label>
         <div class="seg" id="segCurve"><button data-v="linear" class="on" data-i18n="linear"></button><button data-v="smooth" data-i18n="smooth"></button></div></div>
       <div class="row"><label data-i18n="shade"></label>
-        <div class="seg" id="segShade"><button data-v="0" class="on" data-i18n="whiteModel"></button><button data-v="1" data-i18n="waistColour"></button></div></div>
+        <div class="seg" id="segShade"><button data-v="0" class="on" data-i18n="whiteModel"></button><button data-v="2" id="shadePal" class="hidden" data-i18n="catColour"></button><button data-v="1" data-i18n="waistColour"></button></div></div>
       <div class="row"><label data-i18n="envLines"></label>
         <div class="seg" id="segEnv"><button data-v="1" class="on" data-i18n="show"></button><button data-v="0" data-i18n="hide"></button></div></div>
       <div class="read" id="readWaist"></div>
@@ -511,9 +511,13 @@ const Core = (() => {
     const top = c => { const [root, par] = findQ(find(c)); return idx.get(root) + par; };
     const bot = c => { const [root, par] = findQ(find(c)); return idx.get(root) + 1 - par; };
     const out = [];
+    // side of each offset vertex relative to the INPUT winding (1 = the side the input normals point to)
+    const side = new Uint8Array(outV.length / 3).fill(1);
     for (let f = 0; f < nf; f++) {
       const c = f * 3;
       out.push(top(c), top(c + 1), top(c + 2), bot(c), bot(c + 2), bot(c + 1));
+      const keep = F[c] === F0[c] && F[c + 1] === F0[c + 1] ? 1 : 0;
+      for (let k = 0; k < 3; k++) { side[top(c + k)] = keep; side[bot(c + k)] = 1 - keep; }
     }
     for (let i = 0; i < open.length; i += 2) {
       const f = open[i], e = open[i + 1];
@@ -522,7 +526,7 @@ const Core = (() => {
     }
     const Vo = new Float64Array(outV), Fo = new Uint32Array(out);
     if (volumeCentroid(Vo, Fo).vol < 0) for (let k = 0; k < Fo.length; k += 3) { const x = Fo[k + 1]; Fo[k + 1] = Fo[k + 2]; Fo[k + 2] = x; }
-    return { V: Vo, F: Fo, flipped: u.flipped, before: u.before, twist: twist.length / 4 };
+    return { V: Vo, F: Fo, side, flipped: u.flipped, before: u.before, twist: twist.length / 4 };
   }
 
   // per-floor scale factors; for an even floor count this equals the gh
@@ -1017,7 +1021,7 @@ const I18N = {
     secStack: '叠层', floors: '层数', gap: '净高', secWaist: '收腰', minR: '最细比例', curve: '曲线', linear: '线性', smooth: '平滑',
     stCatalogue: '‹ 目录', st1: '单体', st2: '塔楼', st3: '打印', st2s: '{n} 层 · {d}°', st3s: '1:{d}', secUnit: '单体', fromCatalogue: '来自极小曲面目录', changeUnit: '更换单体 ›', nextPrint: '下一步：打印 →', uSize: '{w} × {d} × {h} m · 一个单体 = 一层',
     contact: '层间接触 {c}%', contactLow: '层间只接触 {c}%，打印件粘不住。能对接的角度：{a}', snapAny: '任意角度都能对接', snapTicks: '青色刻度 = 能对接的角度（拖动时吸附）', snapNone: '', autoStep: '已设为能对接的扭转角 {a}°',
-    secTwist: '扭转', step: '每层角度', pivot: '基点', centroid: '质心', bboxc: '包围盒中心',
+    catColour: '目录配色', secTwist: '扭转', step: '每层角度', pivot: '基点', centroid: '质心', bboxc: '包围盒中心',
     secPrint: '打印分件', scale: '比例', wall: '打印壁厚', labels: '层号', emboss: '压凸字', noEmboss: '不压',
     margin: '盘边留白', gapP: '零件间距', prevFloor: '预览第', prevUnit: '层分件',
     btnPrev: '预览分件', btnPlates: '排盘预览', back: '返回塔楼', btnPrint: '导出 ZIP',
@@ -1063,7 +1067,7 @@ const I18N = {
     secStack: 'Stacking', floors: 'Floors', gap: 'Clear height', secWaist: 'Waist', minR: 'Narrowest scale', curve: 'Curve', linear: 'Linear', smooth: 'Smooth',
     stCatalogue: '‹ Catalogue', st1: 'Unit', st2: 'Tower', st3: 'Print', st2s: '{n} floors · {d}°', st3s: '1:{d}', secUnit: 'Unit', fromCatalogue: 'from the minimal surface catalogue', changeUnit: 'Change unit ›', nextPrint: 'Next: print →', uSize: '{w} × {d} × {h} m · one unit = one floor',
     contact: 'floor contact {c}%', contactLow: 'Floors touch only {c}% — printed floors will not hold. Angles that join: {a}', snapAny: 'Any angle joins', snapTicks: 'Cyan ticks = angles where floors join (snaps while dragging)', snapNone: '', autoStep: 'Twist set to {a}°, an angle where floors join',
-    secTwist: 'Twist', step: 'Per floor', pivot: 'Pivot', centroid: 'Centroid', bboxc: 'Box centre',
+    catColour: 'Catalogue colours', secTwist: 'Twist', step: 'Per floor', pivot: 'Pivot', centroid: 'Centroid', bboxc: 'Box centre',
     secPrint: 'Print parts', scale: 'Scale', wall: 'Print wall', labels: 'Floor labels', emboss: 'Raised', noEmboss: 'None',
     margin: 'Plate margin', gapP: 'Part spacing', prevFloor: 'Preview floor', prevUnit: '',
     btnPrev: 'Preview parts', btnPlates: 'Preview plates', back: 'Back to tower', btnPrint: 'Export ZIP',
@@ -1122,9 +1126,13 @@ function applyStatic() {
 
 const GH = { count: 40, gap: 3.6, minR: 0.62, curve: 'linear', step: 22.5, thick: 0.1, pivot: 'centroid' };
 const S = Object.assign({ unit: 1, upY: false }, GH);
-const VIS = { colour: false, lines: true };
+const VIS = { colour: false, lines: true, pal: false };
+const hasPal = () => !!(META && META.pal);
+const rgb = n => [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
+const shadeVal = () => VIS.pal && hasPal() ? 2 : VIS.colour ? 1 : 0;
 function applyVis(cb, lines) {
-  R.setOverlay({ cb, lines: lines && !PR.preview && !PR.plate });
+  const pl = hasPal() && VIS.pal && !PR.preview && !PR.plate;
+  R.setOverlay({ cb, lines: lines && !PR.preview && !PR.plate, pal: pl ? 1 : 0, pf: pl ? rgb(META.pal.front) : null, pb: pl ? rgb(META.pal.back) : null });
   $('legend').classList.toggle('hidden', !(cb > 0.5) || PR.preview || PR.plate);
   $('legA').textContent = '1.00'; $('legB').textContent = (S.minR).toFixed(2);
 }
@@ -1138,11 +1146,11 @@ const dispName = () => sampleKind ? t(sampleKind === 'slab' ? 'sampleSlab' : 'sa
 function rebuild() {
   baseMesh = Core.weld(raw, S.upY);
   const es = Core.edgeStats(baseMesh.F, baseMesh.V.length / 3);
-  let V = baseMesh.V, F = baseMesh.F, thick = false;
+  let V = baseMesh.V, F = baseMesh.F, thick = false, side = null;
   if (!es.closed && es.boundary.length && es.nonManifold === 0) {
     const t = S.thick / S.unit;
     const r = Core.shell(V, F, t);
-    V = r.V; F = r.F; thick = { flipped: r.flipped, before: r.before, twist: r.twist };
+    V = r.V; F = r.F; side = r.side; thick = { flipped: r.flipped, before: r.before, twist: r.twist };
   }
   const bb = Core.bbox(V);
   let c;
@@ -1150,7 +1158,7 @@ function rebuild() {
   const bc = [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2];
   if (S.pivot === 'bbox') c = bc;
   else c = vc.c && Math.abs(vc.vol) > 1e-12 ? vc.c : Core.areaCentroid(V, F).c;
-  geo = { V, F, bb, c, es, thick, h: bb.size[2] };
+  geo = { V, F, side, bb, c, es, thick, h: bb.size[2] };
   computeSnaps();
   halves = null;
   PR.preview = 0;
@@ -1254,6 +1262,8 @@ function updateSteps() {
   const back = META && META.id ? '../minimal-surfaces/#' + META.id : '../minimal-surfaces/';
   $('st1').href = back; $('uBack').href = back;
   $('secUnit').classList.toggle('hidden', !META);
+  $('shadePal').classList.toggle('hidden', !hasPal());
+  for (const b of $('segShade').querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === String(shadeVal()));
   if (META) {
     $('uThumb').src = META.thumb || ''; $('uName').textContent = nm;
     $('uParams').textContent = (META.params || []).map(([zh, en, v]) => (LANG === 'en' ? en : zh) + ' ' + v).join(' · ');
@@ -1480,7 +1490,7 @@ const wallSlider = (() => {
   r.addEventListener('input', () => set(r.value, r)); n.addEventListener('change', () => set(n.value, n));
   return { sync() { n.value = PR.wall; r.value = PR.wall; paint(); } };
 })();
-for (const [id, fn] of [['segScale', v => { PR.den = +v; }], ['segLabel', v => { PR.labels = v === '1'; }], ['segShade', v => { VIS.colour = v === '1'; }], ['segEnv', v => { VIS.lines = v === '1'; }]]) {
+for (const [id, fn] of [['segScale', v => { PR.den = +v; }], ['segLabel', v => { PR.labels = v === '1'; }], ['segShade', v => { VIS.colour = v === '1'; VIS.pal = v === '2'; }], ['segEnv', v => { VIS.lines = v === '1'; }]]) {
   $(id).addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     fn(b.dataset.v);
@@ -1591,7 +1601,7 @@ function restoreParams() {
   if (!d) return false;
   Object.assign(S, d.S); Object.assign(PR, d.PR); Object.assign(VIS, d.VIS);
   const segOn = (id, v) => { for (const b of $(id).querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === String(v)); };
-  segOn('segScale', PR.den); segOn('segLabel', PR.labels ? 1 : 0); segOn('segShade', VIS.colour ? 1 : 0); segOn('segEnv', VIS.lines ? 1 : 0);
+  segOn('segScale', PR.den); segOn('segLabel', PR.labels ? 1 : 0); segOn('segShade', shadeVal()); segOn('segEnv', VIS.lines ? 1 : 0);
   $('nMargin').value = PR.margin; $('nGapP').value = PR.gap;
   syncAll(); rebuild();
   return true;
@@ -1626,6 +1636,7 @@ async function init() {
     if (META && META.fresh) {
       // 刚从目录送来：一个单体 = 一层（净高 0），扭转设为第一个能对接的角度
       Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY);
+      if (META.pal){ VIS.pal = true; VIS.colour = false; }
       const a = autoStep(); if (a !== null) S.step = a;
       syncAll(); rebuild();
       META.fresh = false; STORE.op('readwrite', s => s.put({ ...rec, meta: META }, 'last')).catch(() => {});
@@ -1753,19 +1764,19 @@ const R = (() => {
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
   const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
   const meshP = prog(`#version 300 es
-    layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec4 aI;
+    layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec4 aI; layout(location=3) in float aSd;
     uniform mat4 uVP; uniform float uN; uniform float uHi;
-    out vec3 vN; out vec3 vW; out float vT; out float vHi; out float vS;
+    out vec3 vN; out vec3 vW; out float vT; out float vHi; out float vS; out float vSd;
     void main(){
       float c=cos(aI.y), s=sin(aI.y);
       vec2 xy=aP.xy*aI.x; xy=vec2(c*xy.x-s*xy.y, s*xy.x+c*xy.y);
       vec3 w=vec3(xy, aP.z+aI.z);
       vec2 nxy=aN.xy/max(aI.x,1e-4); nxy=vec2(c*nxy.x-s*nxy.y, s*nxy.x+c*nxy.y);
-      vN=normalize(vec3(nxy,aN.z)); vW=w; vT=uN>1.5?aI.w/(uN-1.0):1.0; vHi=abs(aI.w-uHi)<0.5?1.0:0.0; vS=aI.x;
+      vN=normalize(vec3(nxy,aN.z)); vW=w; vT=uN>1.5?aI.w/(uN-1.0):1.0; vHi=abs(aI.w-uHi)<0.5?1.0:0.0; vS=aI.x; vSd=aSd;
       gl_Position=uVP*vec4(w,1.0);
     }`, `#version 300 es
     precision highp float;
-    in vec3 vN; in vec3 vW; in float vT; in float vHi; in float vS; uniform vec3 uEye; uniform float uCB; uniform float uSmin; out vec4 o;
+    in vec3 vN; in vec3 vW; in float vT; in float vHi; in float vS; in float vSd; uniform vec3 uEye; uniform float uCB; uniform float uSmin; uniform float uPal; uniform vec3 uPF; uniform vec3 uPB; out vec4 o;
     void main(){
       vec3 n=normalize(vN); vec3 v=normalize(uEye-vW);
       if(dot(n,v)<0.0) n=-n;
@@ -1774,6 +1785,7 @@ const R = (() => {
       float hemi=0.5+0.5*n.z;
       float rim=pow(1.0-max(dot(n,v),0.0),3.0);
       vec3 base=mix(vec3(0.42,0.42,0.44), vec3(0.96,0.96,0.97), vT);
+      base=mix(base, mix(uPB, uPF, clamp(vSd,0.0,1.0)), uPal);
       float kS=clamp((1.0-vS)/max(1.0-uSmin,1e-3),0.0,1.0);
       base=mix(base, mix(vec3(0.93,0.93,0.95), vec3(1.0,0.416,0.239), kS), uCB);
       vec3 col=base*(0.22+0.18*hemi+0.62*d)+rim*0.18;
@@ -1794,9 +1806,9 @@ const R = (() => {
   const evao = gl.createVertexArray(), evbo = gl.createBuffer();
 
   function upload(g) {
-    const { V, F, c } = g;
+    const { V, F, c } = g, SD = g.side;
     const nt = F.length / 3;
-    const data = new Float32Array(nt * 18);
+    const data = new Float32Array(nt * 21);
     for (let t = 0; t < nt; t++) {
       const a = F[t * 3] * 3, b = F[t * 3 + 1] * 3, d = F[t * 3 + 2] * 3;
       const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2];
@@ -1804,16 +1816,17 @@ const R = (() => {
       let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
       const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
       [a, b, d].forEach((i, k) => {
-        const o = t * 18 + k * 6;
+        const o = t * 21 + k * 7;
         data[o] = V[i] - c[0]; data[o + 1] = V[i + 1] - c[1]; data[o + 2] = V[i + 2] - c[2];
-        data[o + 3] = nx; data[o + 4] = ny; data[o + 5] = nz;
+        data[o + 3] = nx; data[o + 4] = ny; data[o + 5] = nz; data[o + 6] = SD ? SD[i / 3] : 1;
       });
     }
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
-    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 28, 12);
+    gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 1, gl.FLOAT, false, 28, 24);
     gl.bindBuffer(gl.ARRAY_BUFFER, ibo);
     gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 16, 0); gl.vertexAttribDivisor(2, 1);
     gl.bindVertexArray(null);
@@ -1954,6 +1967,9 @@ const R = (() => {
     gl.uniform1f(gl.getUniformLocation(meshP, 'uHi'), hi);
     gl.uniform1f(gl.getUniformLocation(meshP, 'uCB'), overlay.cb);
     gl.uniform1f(gl.getUniformLocation(meshP, 'uSmin'), smin);
+    gl.uniform1f(gl.getUniformLocation(meshP, 'uPal'), overlay.pal || 0);
+    gl.uniform3fv(gl.getUniformLocation(meshP, 'uPF'), overlay.pf || [1, 1, 1]);
+    gl.uniform3fv(gl.getUniformLocation(meshP, 'uPB'), overlay.pb || [0.3, 0.3, 0.3]);
     gl.bindVertexArray(vao);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, nVerts, nInst);
     gl.useProgram(lineP);
