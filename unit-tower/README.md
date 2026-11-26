@@ -7,7 +7,7 @@ Upload one unit as STL and the page stacks it into a tower with the logic of the
 3. **Scale NU** – XY waist scaling about each floor's centroid, 1 → minimum → 1 (linear like the gh, or smooth cosine). For an even floor count the linear values equal the gh's Series + Reverse List + Merge exactly.
 4. **Rotate** – a constant twist per floor about the same centroid.
 
-gh defaults: 40 floors, clear height 3.6 m, minimum 0.62, 22.5° per floor, thickness 0.1 m.
+Defaults: 20 floors (the gh file has 40), clear height 3.6 m, minimum 0.62, 22.5° per floor, thickness 0.1 m.
 
 Export: STL (merged), OBJ and 3DM (one object per floor), in the units of the uploaded file. 3DM export loads rhino3dm from jsDelivr on demand, so it needs a network connection.
 
