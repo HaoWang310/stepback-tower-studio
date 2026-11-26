@@ -80,6 +80,12 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 .btn:disabled{opacity:.4;cursor:default}
 .link{background:none;border:0;color:var(--t2);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;margin-top:8px}
 .warn{color:#ff453a}
+.caution{color:#ffd60a}
+.scl{display:flex;align-items:center;gap:6px}
+.scl .num{width:64px;text-align:right}
+.sbtn{width:30px;height:28px;padding:0;font-size:16px;line-height:1}
+.sclhint{text-align:right;color:var(--t3);font-size:11px;margin:-4px 0 6px}
+.fixbtn{margin-top:6px;padding:6px 12px;font-size:12px}
 #hud{position:absolute;left:0;right:0;bottom:16px;text-align:center;pointer-events:none}
 #hud .a{font-size:13px;color:var(--t1)}
 #hud .b{font-size:11.5px;color:var(--t3);margin-top:4px}
@@ -192,7 +198,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     <div class="sec" id="secPrint">
       <h2><b data-i18n="secPrint"></b> <span>Bambu Lab A1 · 256 mm</span></h2>
       <div class="row"><label data-i18n="scale"></label>
-        <div class="seg" id="segScale"><button data-v="300">1:300</button><button data-v="500" class="on">1:500</button><button data-v="750">1:750</button><button data-v="1000">1:1000</button></div></div>
+        <span class="scl"><span class="unit">1 :</span><input class="num" id="nScale" type="number" min="1" max="1000" step="1" inputmode="numeric" aria-describedby="sclHint"><button class="btn sbtn" id="sclDn" type="button" aria-label="−10">−</button><button class="btn sbtn" id="sclUp" type="button" aria-label="+10">+</button></span></div>
+      <div class="sclhint" id="sclHint">1–1000</div>
       <div class="row"><label data-i18n="wall"></label><span><input class="num" id="nWall" type="number" step="0.1"><span class="unit">mm</span></span></div>
       <input type="range" id="rWall" min="0.4" max="3" step="0.1">
       <div class="row"><label data-i18n="labels"></label>
@@ -1040,6 +1047,7 @@ const I18N = {
     hud: '{n} 层 · 总高 {H} m · 扭转 {d}°',
     printClosed: '分件需要开放面单体（闭合实体暂不支持切半）', print1: '每层切成上下两半（单体中线），上半翻面打印',
     print2: '单片 {a}–{b} mm 见方 · 高约 {h} mm', pieces: '{n} 片', platesDone: '{n} 盘（按轮廓排好）', platesTodo: '盘数点“排盘预览”计算',
+    sclMin: '能放进 A1 的最小比例 1:{d}', sclNone: '1:1000 也放不进 A1', tooBig2: '最大单片 {a} mm，放不进 A1（可用约 {mm} mm）；排盘和导出已停用', fitScale: '改成 1:{d}', tooSmall: '单片只有 {mm} mm：层号放不下，细节可能打不出来',
     wallReal: '壁厚相当于真实 {w} m', tooBig: '最大单片超过 {mm} mm，放不进 A1，请换小一点的比例',
     progOutline: '轮廓 {i}/{n}', progPack: '排盘…', generating: '生成中…',
     hudPlate: '盘 {n} / {N} · {list}', noLabel: ' · {list} 层号放不下',
@@ -1086,6 +1094,7 @@ const I18N = {
     hud: '{n} floors · height {H} m · twist {d}°',
     printClosed: 'Print parts need an open-surface unit (closed solids cannot be cut in half yet)', print1: 'Each floor is cut in half at mid-height; the upper half prints flipped',
     print2: 'Pieces {a}–{b} mm across · about {h} mm tall', pieces: '{n} pieces', platesDone: '{n} plates (packed by outline)', platesTodo: 'click “Preview plates” for the plate count',
+    sclMin: 'Smallest scale that fits the A1: 1:{d}', sclNone: 'Does not fit the A1 even at 1:1000', tooBig2: 'The largest piece is {a} mm and does not fit the A1 (about {mm} mm usable) — plates and export are off', fitScale: 'Change to 1:{d}', tooSmall: 'Pieces are only {mm} mm: no room for floor labels, fine detail may not print',
     wallReal: 'wall ≈ {w} m real', tooBig: 'The largest piece is over {mm} mm and does not fit the A1 — choose a smaller scale',
     progOutline: 'Outline {i}/{n}', progPack: 'Packing…', generating: 'Generating…',
     hudPlate: 'Plate {n} / {N} · {list}', noLabel: ' · no room for label: {list}',
@@ -1352,19 +1361,30 @@ function plan(fl) {
   if (cur.length) plates.push(cur);
   const sizes = fl.map(f => size(f.s));
   const halfH = (bb0.size[2] / 2) * k + PR.wall;
-  return { plates, maxD: Math.max(...sizes), minD: Math.min(...sizes), halfH, fits: Math.max(...sizes) <= PLATE - 2 * MARGIN };
+  // room on the plate as the packer sees it: the plate margin on each side, and half a gap round each piece
+  const room = PLATE - 2 * Math.max(MARGIN, PR.margin) - PR.gap, sMax = Math.max(...fl.map(f => f.s));
+  const span = Math.max(bb0.size[0], bb0.size[1]) * sMax * S.unit * 1000;            // widest floor, real mm
+  const minDen = room > PR.wall ? Math.min(1001, Math.ceil(span / (room - PR.wall))) : 1001;
+  return { plates, maxD: Math.max(...sizes), minD: Math.min(...sizes), halfH, minDen, room, fits: Math.max(...sizes) <= room };
 }
 function updatePrint(fl) {
   const ok = !geo.es.closed && geo.thick;
   $('btnPrev').disabled = $('btnPrint').disabled = $('btnPlates').disabled = !ok;
+  syncScale();
   if (!ok) { $('readPrint').innerHTML = `<span class="warn">${t('printClosed')}</span>`; return; }
   const pl = plan(fl);
+  // 放不下：排盘和导出变灰（排盘视图里「返回塔楼」照常能点），并给一键改到刚好放得下的比例
+  if (!pl.fits) { $('btnPrint').disabled = true; if (!PR.plate) $('btnPlates').disabled = true; }
+  $('sclHint').innerHTML = pl.minDen <= 1000 ? t('sclMin', { d: pl.minDen }) : t('sclNone');
   const wReal = PR.wall * PR.den / 1000;
   $('readPrint').innerHTML =
     t('print1') + '<br>' +
     t('print2', { a: fmt(pl.maxD, 0), b: fmt(pl.minD, 0), h: fmt(pl.halfH, 1) }) + '<br>' +
-    t('pieces', { n: S.count * 2 }) + ' · ' + (packCache && packCache.key === packKey() ? t('platesDone', { n: packCache.plates.length }) : t('platesTodo')) + ' · ' + t('wallReal', { w: fmt(wReal, 2) }) +
-    (pl.fits ? '' : `<br><span class="warn">${t('tooBig', { mm: PLATE - 2 * MARGIN })}</span>`);
+    t('pieces', { n: S.count * 2 }) + ' · ' + (packCache && packCache.key === packKey() ? t('platesDone', { n: packCache.plates.length }) : t('platesTodo')) + ' · ' + t('wallReal', { w: fmt(wReal, wReal < 0.01 ? 4 : wReal < 0.1 ? 3 : 2) }) +
+    (pl.fits ? (pl.maxD < 10 ? `<br><span class="caution">${t('tooSmall', { mm: fmt(pl.maxD, 0) })}</span>` : '')
+      : `<br><span class="warn">${t('tooBig2', { a: fmt(pl.maxD, 0), mm: fmt(pl.room, 0) })}</span>` +
+        (pl.minDen <= 1000 ? `<br><button class="btn fixbtn" id="btnFitScale" type="button">${t('fitScale', { d: pl.minDen })}</button>` : `<br><span class="warn">${t('sclNone')}</span>`));
+  const fb = $('btnFitScale'); if (fb) fb.onclick = () => setScale(pl.minDen);
   $('nPrev').max = S.count;
 }
 function packKey() {
@@ -1490,7 +1510,19 @@ const wallSlider = (() => {
   r.addEventListener('input', () => set(r.value, r)); n.addEventListener('change', () => set(n.value, n));
   return { sync() { n.value = PR.wall; r.value = PR.wall; paint(); } };
 })();
-for (const [id, fn] of [['segScale', v => { PR.den = +v; }], ['segLabel', v => { PR.labels = v === '1'; }], ['segShade', v => { VIS.colour = v === '1'; VIS.pal = v === '2'; }], ['segEnv', v => { VIS.lines = v === '1'; }]]) {
+// 打印比例：自由输入 1–1000（整数）。回车或离开输入框才生效；超出范围夹到 1 / 1000，非数字恢复原值
+function syncScale() { const n = $('nScale'); if (n && document.activeElement !== n) n.value = PR.den; }
+function setScale(v) {
+  let d = Math.round(+v);
+  if (!isFinite(d) || String(v).trim() === '') d = PR.den;
+  d = Math.max(1, Math.min(1000, d));
+  const changed = d !== PR.den; PR.den = d; $('nScale').value = d;
+  if (changed) update(false);
+}
+$('nScale').addEventListener('change', e => setScale(e.target.value));
+$('nScale').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
+for (const [id, sg] of [['sclDn', -1], ['sclUp', 1]]) $(id).addEventListener('click', e => setScale(PR.den + sg * (e.shiftKey ? 100 : 10)));
+for (const [id, fn] of [['segLabel', v => { PR.labels = v === '1'; }], ['segShade', v => { VIS.colour = v === '1'; VIS.pal = v === '2'; }], ['segEnv', v => { VIS.lines = v === '1'; }]]) {
   $(id).addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     fn(b.dataset.v);
@@ -1601,7 +1633,7 @@ function restoreParams() {
   if (!d) return false;
   Object.assign(S, d.S); Object.assign(PR, d.PR); Object.assign(VIS, d.VIS);
   const segOn = (id, v) => { for (const b of $(id).querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === String(v)); };
-  segOn('segScale', PR.den); segOn('segLabel', PR.labels ? 1 : 0); segOn('segShade', shadeVal()); segOn('segEnv', VIS.lines ? 1 : 0);
+  syncScale(); segOn('segLabel', PR.labels ? 1 : 0); segOn('segShade', shadeVal()); segOn('segEnv', VIS.lines ? 1 : 0);
   $('nMargin').value = PR.margin; $('nGapP').value = PR.gap;
   syncAll(); rebuild();
   return true;
