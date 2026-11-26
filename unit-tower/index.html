@@ -1133,7 +1133,7 @@ function applyStatic() {
   if (typeof playLabel === 'function' && $('btnPlay')) playLabel();
 }
 
-const GH = { count: 40, gap: 3.6, minR: 0.62, curve: 'linear', step: 22.5, thick: 0.1, pivot: 'centroid' };
+const GH = { count: 20, gap: 3.6, minR: 0.62, curve: 'linear', step: 22.5, thick: 0.1, pivot: 'centroid' };
 const S = Object.assign({ unit: 1, upY: false }, GH);
 const VIS = { colour: false, lines: true, pal: false };
 const hasPal = () => !!(META && META.pal);
@@ -1617,7 +1617,7 @@ function saveParams() {
   savePending = () => {
     savePending = null;
     const keep = ['count', 'gap', 'minR', 'curve', 'step', 'thick', 'pivot', 'unit', 'upY'];
-    const data = { at: Date.now(), S: Object.fromEntries(keep.map(k => [k, S[k]])), PR: { den: PR.den, wall: PR.wall, labels: PR.labels, margin: PR.margin, gap: PR.gap }, VIS: { ...VIS } };
+    const data = { v2: 1, at: Date.now(), S: Object.fromEntries(keep.map(k => [k, S[k]])), PR: { den: PR.den, wall: PR.wall, labels: PR.labels, margin: PR.margin, gap: PR.gap }, VIS: { ...VIS } };
     const all = readParams(); all[tag] = data;
     for (const k of Object.keys(all).sort((a, b) => all[b].at - all[a].at).slice(6)) delete all[k];   // keep the 6 most recent models
     try { localStorage.setItem(PARAM_KEY, JSON.stringify(all)); } catch (e) {}
@@ -1631,6 +1631,7 @@ function readParams() {
 function restoreParams() {
   const d = readParams()[modelTag()];
   if (!d) return false;
+  if (!d.v2 && d.S && d.S.count === 40) d.S.count = GH.count;   // 40 was the old default floor count
   Object.assign(S, d.S); Object.assign(PR, d.PR); Object.assign(VIS, d.VIS);
   const segOn = (id, v) => { for (const b of $(id).querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === String(v)); };
   syncScale(); segOn('segLabel', PR.labels ? 1 : 0); segOn('segShade', shadeVal()); segOn('segEnv', VIS.lines ? 1 : 0);
