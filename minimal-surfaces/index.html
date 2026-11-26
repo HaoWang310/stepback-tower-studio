@@ -61,6 +61,11 @@ a.st:hover{background:#262B33}
 .st small{color:#6F7885;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .st.on{background:#E8EAED;color:#0b0d10}.st.on i{background:#0b0d10;color:#fff}.st.on small{color:rgba(0,0,0,.55)}
 .sl{flex:none;width:18px;height:1px;background:#3A3F47}
+.chk{font-size:11.5px;color:#6F7885;margin-top:8px;line-height:1.6}
+.chk .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#30d158}
+.chk .dot.fix{background:#FF9F0A}.chk .dot.bad{background:#ff453a}.chk .dot.idle{background:#3A3F47}
+.chk b{color:#E8ECF2;font-weight:500}
+.side[data-snap=peek] .sfoot .chk{display:none}
 .fbtns{display:grid;grid-template-columns:1fr auto;gap:8px}
 .export2{height:46px;padding:0 14px;border:1px solid #3A3F47;border-radius:14px;background:transparent;color:#E8ECF2;font:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer}
 .export2:hover{border-color:#8A94A3}
@@ -218,6 +223,7 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-of
       <div class="stat" id="stat"></div>
       <div class="fbtns"><button type="button" class="export" id="b-tower"><span data-i18n="用作塔楼单体 →">用作塔楼单体 →</span></button>
       <button type="button" class="export2" id="b-stl" data-i18n-title="导出 STL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19h14"/></svg><span>STL</span></button></div>
+      <div class="chk" id="chk-stl"></div>
     </div>
     <div class="grip" id="grip" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="拖动调整侧栏宽度"></div>
   </aside>
@@ -354,7 +360,11 @@ const EN = {
   '三维库加载失败，请刷新页面':'3D library failed to load — please refresh', '这组参数下周期条件无解，换一个扭转值试试':'No period solution for these parameters — try another twist value',
   '参考图已叠加，拖动视角对齐':'Reference overlaid — orbit to line it up', '已导出 STL':'STL exported', '这个视图不能下载，请在浏览器里直接打开本页':'Downloads are blocked here — open this page directly in a browser',
   '已导出 STL（zip 压缩包内）':'STL exported (inside a zip)', '已取消导出':'Export cancelled', '稍等片刻再试':'Please wait a moment and try again',
-  '请在浏览器或电脑上打开本页导出':'Open this page in a browser or on a computer to export', '导出失败，请重试':'Export failed — please try again'
+  '请在浏览器或电脑上打开本页导出':'Open this page in a browser or on a computer to export',
+  '导出时按拓竹读文件的方式检查一遍，有问题当场修好':'Each export is checked the way Bambu Studio reads it and fixed on the spot',
+  '拓竹检查通过':'Bambu check passed', '0 非流形边 · 0 破洞 · 法向一致 · {n} 个三角面':'0 non-manifold edges · 0 holes · normals agree · {n} triangles',
+  '发现 {k} 处，导出时已自动修好':'{k} problems found, fixed during export', '拆开 {e} 条共用边 · 翻正 {f} 处法向':'{e} shared edges split · {f} normals turned',
+  '还有 {k} 处没拆开（多在曲面的尖角上）；拓竹会提示，可以照常切片':'{k} spots could not be separated (mostly at sharp corners of the surface); Bambu Studio will warn, slicing works as usual', '导出失败，请重试':'Export failed — please try again'
 };
 const MISS = new Set();
 function T(s, o){
@@ -363,6 +373,322 @@ function T(s, o){
   if (o) r = r.replace(/\{(\w+)\}/g, (_, k) => o[k] ?? '');
   return r;
 }
+// ===================== MESHFIX-BEGIN (same code in unit-tower/ and minimal-surfaces/) =====================
+// 拓竹检查 / 修复：和切片软件一样，坐标完全相同的点才算同一个点（Bambu Studio / PrusaSlicer 读 STL 的方式）
+const MeshFix = (() => {
+  function bboxDiag(V) {
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < V.length; i += 3) for (let k = 0; k < 3; k++) { const v = V[i + k]; if (v < mn[k]) mn[k] = v; if (v > mx[k]) mx[k] = v; }
+    return Math.hypot(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]) || 1;
+  }
+  function parseSTL(buf) {
+    const dv = new DataView(buf), bytes = new Uint8Array(buf);
+    let bin = buf.byteLength >= 84 && 84 + dv.getUint32(80, true) * 50 === buf.byteLength;
+    if (!bin) { const head = new TextDecoder().decode(bytes.subarray(0, Math.min(1024, bytes.length))).toLowerCase(); if (!(head.trimStart().startsWith('solid') && head.includes('facet')) && buf.byteLength >= 84) bin = true; }
+    if (bin) {
+      const n = Math.min(dv.getUint32(80, true), Math.floor((buf.byteLength - 84) / 50)), pos = new Float32Array(n * 9);
+      for (let i = 0; i < n; i++) { const o = 84 + i * 50 + 12; for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + k * 4, true); }
+      return pos;
+    }
+    const text = new TextDecoder().decode(bytes), re = /vertex\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)/g, out = [];
+    let m; while ((m = re.exec(text))) out.push(+m[1], +m[2], +m[3]);
+    return new Float32Array(out.slice(0, out.length - out.length % 9));
+  }
+  // one winding per connected piece (pieces joined by edges with exactly two faces); keeps the majority
+  function orient(V, F) {
+    const nf = F.length / 3, nv = V.length / 3, nb = Array.from({ length: nf }, () => []);
+    for (const l of edgeTable(F, nv).values()) if (l.length === 2) {
+      const f = (l[0] / 3) | 0, g = (l[1] / 3) | 0, same = F[l[0]] === F[l[1]] ? 1 : 0;
+      nb[f].push(g, same); nb[g].push(f, same);
+    }
+    const flip = new Int8Array(nf).fill(-1), G = new Uint32Array(F);
+    for (let s = 0; s < nf; s++) {
+      if (flip[s] >= 0) continue;
+      flip[s] = 0; const list = [s];
+      for (let i = 0; i < list.length; i++) { const f = list[i], L = nb[f]; for (let j = 0; j < L.length; j += 2) if (flip[L[j]] < 0) { flip[L[j]] = flip[f] ^ L[j + 1]; list.push(L[j]); } }
+      let k = 0; for (const f of list) k += flip[f];
+      if (k * 2 > list.length) for (const f of list) flip[f] ^= 1;
+    }
+    for (let f = 0; f < nf; f++) if (flip[f]) { const t = G[f * 3 + 1]; G[f * 3 + 1] = G[f * 3 + 2]; G[f * 3 + 2] = t; }
+    return G;
+  }
+  // pos: triangle soup (x y z per corner, as written to the STL). Points with bit-identical float32
+  // coordinates are one vertex, exactly as Bambu Studio / PrusaSlicer read an STL.
+  function soupIndex(pos) {
+    const n = pos.length / 3, f32 = pos instanceof Float32Array ? pos : Float32Array.from(pos);
+    const u = new Uint32Array(f32.buffer, f32.byteOffset, f32.length);
+    let cap = 1; while (cap < n * 2) cap <<= 1;
+    const tab = new Int32Array(cap).fill(-1), mask = cap - 1;
+    const idx = new Uint32Array(n), first = [];
+    let nv = 0;
+    for (let i = 0; i < n; i++) {
+      const x = u[i * 3], y = u[i * 3 + 1], z = u[i * 3 + 2];
+      let h = (Math.imul(x, 0x9E3779B1) ^ Math.imul(y, 0x85EBCA77) ^ Math.imul(z, 0xC2B2AE3D)) >>> 0;
+      for (;;) {
+        h &= mask; const j = tab[h];
+        if (j < 0) { tab[h] = i; idx[i] = nv++; first.push(i); break; }
+        if (u[j * 3] === x && u[j * 3 + 1] === y && u[j * 3 + 2] === z) { idx[i] = idx[j]; break; }
+        h++;
+      }
+    }
+    const V = new Float64Array(nv * 3);
+    for (let k = 0; k < nv; k++) { const i = first[k]; V[k * 3] = f32[i * 3]; V[k * 3 + 1] = f32[i * 3 + 1]; V[k * 3 + 2] = f32[i * 3 + 2]; }
+    return { V, F: idx };
+  }
+  // undirected edge table of an indexed mesh: for every edge the list of (face, which edge)
+  function edgeTable(F, nv) {
+    const nf = F.length / 3, m = new Map();
+    for (let f = 0; f < nf; f++) for (let e = 0; e < 3; e++) {
+      const a = F[f * 3 + e], b = F[f * 3 + (e + 1) % 3];
+      if (a === b) continue;
+      const k = a < b ? a * nv + b : b * nv + a;
+      const l = m.get(k); if (l) l.push(f * 3 + e); else m.set(k, [f * 3 + e]);
+    }
+    return m;
+  }
+  // what Bambu Studio counts: open / non-manifold edges, faces wound against their neighbour, zero-area faces
+  function meshCheck(pos) {
+    const { V, F } = soupIndex(pos), nv = V.length / 3, nf = F.length / 3;
+    let degenerate = 0;
+    const G = [];
+    for (let f = 0; f < nf; f++) {
+      const a = F[f * 3], b = F[f * 3 + 1], c = F[f * 3 + 2];
+      if (a === b || b === c || a === c) { degenerate++; continue; }
+      G.push(a, b, c);
+    }
+    const m = edgeTable(G, nv);
+    let open = 0, nonManifold = 0, reversed = 0;
+    for (const l of m.values()) {
+      if (l.length === 1) open++;
+      else if (l.length > 2) nonManifold++;
+      else { const f = l[0], g = l[1]; if (G[f] === G[g]) reversed++; }   // same start vertex = same direction
+    }
+    return { tris: nf, open, nonManifold, reversed, degenerate, ok: !open && !nonManifold && !reversed && !degenerate };
+  }
+
+  // repair a triangle soup so that it reads as clean closed solids:
+  // drop degenerate / duplicate faces -> split edges shared by more than two faces (pair faces around
+  // the edge so each pair encloses material) -> unify winding, solids outward -> close small holes ->
+  // nudge split copies a hair apart (1e-6 of the size) so they stay separate after re-reading.
+  function meshRepair(pos, opt) {
+    const before = meshCheck(pos), useFans = !!(opt && opt.fans);
+    let { V, F } = soupIndex(pos);
+    let nv = V.length / 3;
+    const diag = bboxDiag(V);
+    // 1. degenerate + duplicate faces (the same triangle once each way = an inner double wall: drop both)
+    const fkey = new Map(), keep = [];
+    let removed = 0;
+    for (let f = 0; f < F.length / 3; f++) {
+      const a = F[f * 3], b = F[f * 3 + 1], c = F[f * 3 + 2];
+      if (a === b || b === c || a === c) { removed++; continue; }
+      const ux = V[b * 3] - V[a * 3], uy = V[b * 3 + 1] - V[a * 3 + 1], uz = V[b * 3 + 2] - V[a * 3 + 2];
+      const wx = V[c * 3] - V[a * 3], wy = V[c * 3 + 1] - V[a * 3 + 1], wz = V[c * 3 + 2] - V[a * 3 + 2];
+      if (Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx) <= diag * diag * 1e-20) { removed++; continue; }
+      const lo = Math.min(a, b, c), hi = Math.max(a, b, c), mid = a + b + c - lo - hi, k = lo + ',' + mid + ',' + hi;
+      const g = fkey.get(k);
+      if (g === undefined) { fkey.set(k, keep.length); keep.push(a, b, c); continue; }
+      removed++;
+      if (g < 0) continue;
+      const same = (keep[g] === a && keep[g + 1] === b) || (keep[g + 1] === a && keep[g + 2] === b) || (keep[g + 2] === a && keep[g] === b);
+      if (!same) { keep[g] = keep[g + 1] = keep[g + 2] = -1; fkey.set(k, -1); removed++; }
+    }
+    F = Uint32Array.from(keep.filter(x => x >= 0));
+    const nf = F.length / 3;
+    // 2. pair face-edges: partner[corner] = partner corner (corner f*3+e = edge F[e] -> F[e+1]) or -1
+    const partner = new Int32Array(nf * 3).fill(-1);
+    let splitEdges = 0;
+    const P = (i, k) => V[i * 3 + k];
+    const etab = edgeTable(F, nv);
+    // pieces joined by ordinary edges (two faces): faces at a crowded edge pair up within their own piece first
+    const pc = new Int32Array(nf); for (let i = 0; i < nf; i++) pc[i] = i;
+    const fp = x => { while (pc[x] !== x) { pc[x] = pc[pc[x]]; x = pc[x]; } return x; };
+    for (const l of etab.values()) if (l.length === 2) { const x = fp((l[0] / 3) | 0), y = fp((l[1] / 3) | 0); if (x !== y) pc[x] = y; }
+    // faces at each point (for fans), built on first use
+    let vfS = null, vfL = null;
+    const fanCache = new Map();
+    const fanAt = p => {
+      let r = fanCache.get(p); if (r) return r;
+      if (!vfS) {
+        vfS = new Uint32Array(nv + 1); for (let i = 0; i < F.length; i++) vfS[F[i] + 1]++;
+        for (let i = 0; i < nv; i++) vfS[i + 1] += vfS[i];
+        vfL = new Uint32Array(F.length); const fill = vfS.slice(0, nv);
+        for (let i = 0; i < F.length; i++) vfL[fill[F[i]]++] = (i / 3) | 0;
+      }
+      const fs = Array.from(vfL.subarray(vfS[p], vfS[p + 1])), id = new Map(fs.map((f, i) => [f, i])), par = fs.map((_, i) => i);
+      const root = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+      for (const f of fs) for (let e = 0; e < 3; e++) {
+        const a = F[f * 3 + e], b = F[f * 3 + (e + 1) % 3]; if (a !== p && b !== p) continue;
+        const l2 = etab.get(a < b ? a * nv + b : b * nv + a);
+        if (l2 && l2.length === 2) { const x = root(id.get((l2[0] / 3) | 0)), y = root(id.get((l2[1] / 3) | 0)); if (x !== y) par[x] = y; }
+      }
+      r = f => root(id.get(f)); fanCache.set(p, r); return r;
+    };
+    for (let l of etab.values()) {
+      if (l.length === 2) { partner[l[0]] = l[1]; partner[l[1]] = l[0]; continue; }
+      if (l.length < 3) continue;
+      splitEdges++;
+      // group the faces at this edge: same separate piece, else same fan around either end point
+      // (fan = faces at the point joined through ordinary edges at that point); a group of two that run
+      // opposite ways encloses material and becomes a pair
+      let rest = l;
+      const keys = [c => fp((c / 3) | 0)];
+      if (useFans) keys.push(c => fanAt(F[c])((c / 3) | 0), c => fanAt(F[((c / 3) | 0) * 3 + (c % 3 + 1) % 3])((c / 3) | 0));
+      for (const key of keys) {
+        const groups = new Map();
+        for (const c of rest) { const r = key(c); const g = groups.get(r); if (g) g.push(c); else groups.set(r, [c]); }
+        const left = [];
+        for (const g of groups.values()) {
+          if (g.length === 2 && F[g[0]] !== F[g[1]]) { partner[g[0]] = g[1]; partner[g[1]] = g[0]; }
+          else left.push(...g);
+        }
+        rest = left;
+        if (rest.length < 3) break;
+      }
+      if (rest.length < 2) continue;
+      l = rest;
+      const c0 = l[0], a = F[c0], b = F[((c0 / 3) | 0) * 3 + (c0 % 3 + 1) % 3];
+      const ax = [P(b, 0) - P(a, 0), P(b, 1) - P(a, 1), P(b, 2) - P(a, 2)], al = Math.hypot(...ax) || 1;
+      for (let i = 0; i < 3; i++) ax[i] /= al;
+      let ref = null, ref2 = null;
+      const items = l.map(c => {
+        const f = (c / 3) | 0, o = F[f * 3 + (c % 3 + 2) % 3];
+        let d = [P(o, 0) - P(a, 0), P(o, 1) - P(a, 1), P(o, 2) - P(a, 2)];
+        const dp = d[0] * ax[0] + d[1] * ax[1] + d[2] * ax[2];
+        d = [d[0] - dp * ax[0], d[1] - dp * ax[1], d[2] - dp * ax[2]];
+        const dl = Math.hypot(...d) || 1; d = d.map(x => x / dl);
+        if (!ref) { ref = d; ref2 = [ax[1] * d[2] - ax[2] * d[1], ax[2] * d[0] - ax[0] * d[2], ax[0] * d[1] - ax[1] * d[0]]; }
+        const th = Math.atan2(d[0] * ref2[0] + d[1] * ref2[1] + d[2] * ref2[2], d[0] * ref[0] + d[1] * ref[1] + d[2] * ref[2]);
+        return { c, th, s: F[c] === a ? 1 : -1 };          // +1: the face's normal points toward increasing angle
+      }).sort((p, q) => p.th - q.th);
+      // material lies between face i and i+1 when face i faces back and face i+1 faces forward
+      const k = items.length, used = new Uint8Array(k);
+      for (let i = 0; i < k; i++) {
+        const j = (i + 1) % k, p = items[i], q = items[j];
+        if (!used[i] && !used[j] && p.s < 0 && q.s > 0) { partner[p.c] = q.c; partner[q.c] = p.c; used[i] = used[j] = 1; }
+      }
+      for (let i = 0; i < k; i++) if (!used[i]) for (let j = 1; j < k; j++) {
+        const q = (i + j) % k; if (!used[q]) { partner[items[i].c] = items[q].c; partner[items[q].c] = items[i].c; used[i] = used[q] = 1; break; }
+      }
+    }
+    // 3. split vertices into fans: corners at one vertex join across paired edges
+    const par = new Int32Array(nf * 3); for (let i = 0; i < par.length; i++) par[i] = i;
+    const find = x => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+    const join = (x, y) => { x = find(x); y = find(y); if (x !== y) par[x] = y; };
+    const cornerOf = (f, v) => f * 3 + (F[f * 3] === v ? 0 : F[f * 3 + 1] === v ? 1 : 2);
+    for (let c = 0; c < nf * 3; c++) {
+      const d = partner[c]; if (d < c) continue;
+      const f = (c / 3) | 0, g = (d / 3) | 0, a = F[c], b = F[f * 3 + (c % 3 + 1) % 3];
+      join(cornerOf(f, a), cornerOf(g, a)); join(cornerOf(f, b), cornerOf(g, b));
+    }
+    const newId = new Map(), origin = [], V2 = [], F2 = new Uint32Array(nf * 3);
+    const nCopy = new Uint32Array(nv);
+    for (let c = 0; c < nf * 3; c++) {
+      const r = find(c); let id = newId.get(r);
+      if (id === undefined) { id = origin.length; newId.set(r, id); const v = F[c]; origin.push(v); nCopy[v]++; V2.push(V[v * 3], V[v * 3 + 1], V[v * 3 + 2]); }
+      F2[c] = id;
+    }
+    V = Float64Array.from(V2); F = F2; nv = V.length / 3;
+    // 4. one winding per connected piece
+    F = orient(V, F);
+    // 5. close holes: open edges a -> b, walked backwards (b -> a) into loops; fan small loops from their centre
+    const em = edgeTable(F, nv), nextOf = new Map();
+    for (const l of em.values()) if (l.length === 1) { const c = l[0], a = F[c], b = F[((c / 3) | 0) * 3 + (c % 3 + 1) % 3]; nextOf.set(b, a); }
+    let holes = 0, holesLeft = 0;
+    const Fa = Array.from(F), Va = Array.from(V), seen = new Set();
+    for (const s0 of nextOf.keys()) {
+      if (seen.has(s0)) continue;
+      const loop = [s0]; seen.add(s0);
+      let x = nextOf.get(s0), ok = true, per = 0;
+      while (x !== s0) { if (x === undefined || seen.has(x)) { ok = false; break; } loop.push(x); seen.add(x); x = nextOf.get(x); }
+      const m = loop.length;
+      for (let i = 0; ok && i < m; i++) { const p = loop[i] * 3, q = loop[(i + 1) % m] * 3; per += Math.hypot(V[q] - V[p], V[q + 1] - V[p + 1], V[q + 2] - V[p + 2]); }
+      if (!ok || m < 3 || (m > 64 && per > diag * 0.5)) { holesLeft++; continue; }   // long open rims (an open surface) stay open
+      let cx = 0, cy = 0, cz = 0;
+      for (const v of loop) { cx += V[v * 3]; cy += V[v * 3 + 1]; cz += V[v * 3 + 2]; }
+      const ci = Va.length / 3; Va.push(cx / m, cy / m, cz / m);
+      for (let i = 0; i < m; i++) Fa.push(loop[i], loop[(i + 1) % m], ci);
+      holes++;
+    }
+    V = Float64Array.from(Va); F = Uint32Array.from(Fa); nv = V.length / 3;
+    // 6. every closed piece outward
+    const nf2 = F.length / 3, comp = new Int32Array(nf2).fill(-1), nb = Array.from({ length: nf2 }, () => []);
+    const openF = new Uint8Array(nf2);
+    for (const l of edgeTable(F, nv).values()) {
+      if (l.length === 2) { const f = (l[0] / 3) | 0, g = (l[1] / 3) | 0; nb[f].push(g); nb[g].push(f); }
+      else for (const c of l) openF[(c / 3) | 0] = 1;
+    }
+    let flippedOut = 0;
+    for (let s = 0; s < nf2; s++) {
+      if (comp[s] >= 0) continue;
+      const list = [s]; comp[s] = s; let closed = !openF[s], vol = 0;
+      for (let i = 0; i < list.length; i++) for (const g of nb[list[i]]) if (comp[g] < 0) { comp[g] = s; list.push(g); if (openF[g]) closed = false; }
+      if (!closed) continue;
+      for (const f of list) {
+        const a = F[f * 3] * 3, b = F[f * 3 + 1] * 3, c = F[f * 3 + 2] * 3;
+        vol += V[a] * (V[b + 1] * V[c + 2] - V[b + 2] * V[c + 1]) - V[a + 1] * (V[b] * V[c + 2] - V[b + 2] * V[c]) + V[a + 2] * (V[b] * V[c + 1] - V[b + 1] * V[c]);
+      }
+      if (vol < 0) { flippedOut += list.length; for (const f of list) { const t = F[f * 3 + 1]; F[f * 3 + 1] = F[f * 3 + 2]; F[f * 3 + 2] = t; } }
+    }
+    // 7. split copies of one point: move each a hair into its own faces so the file keeps them apart
+    let mx = 0; for (let i = 0; i < V.length; i++) mx = Math.max(mx, Math.abs(V[i]));
+    const step = Math.max(diag * 2e-6, mx * 2e-6);
+    const acc = new Float64Array(nv * 3), cnt = new Uint32Array(nv);
+    for (let f = 0; f < nf2; f++) {
+      const a = F[f * 3], b = F[f * 3 + 1], c = F[f * 3 + 2];
+      const gx = (V[a * 3] + V[b * 3] + V[c * 3]) / 3, gy = (V[a * 3 + 1] + V[b * 3 + 1] + V[c * 3 + 1]) / 3, gz = (V[a * 3 + 2] + V[b * 3 + 2] + V[c * 3 + 2]) / 3;
+      for (const v of [a, b, c]) if (v < origin.length && nCopy[origin[v]] > 1) { acc[v * 3] += gx; acc[v * 3 + 1] += gy; acc[v * 3 + 2] += gz; cnt[v]++; }
+    }
+    let moved = 0;
+    for (let v = 0; v < origin.length; v++) if (cnt[v]) {
+      const dx = acc[v * 3] / cnt[v] - V[v * 3], dy = acc[v * 3 + 1] / cnt[v] - V[v * 3 + 1], dz = acc[v * 3 + 2] / cnt[v] - V[v * 3 + 2], l = Math.hypot(dx, dy, dz);
+      if (l > 0) { const k = Math.min(step, l * 0.25) / l; V[v * 3] += dx * k; V[v * 3 + 1] += dy * k; V[v * 3 + 2] += dz * k; moved++; }
+    }
+    const out = new Float32Array(F.length * 3);
+    for (let i = 0; i < F.length; i++) { const v = F[i] * 3; out[i * 3] = V[v]; out[i * 3 + 1] = V[v + 1]; out[i * 3 + 2] = V[v + 2]; }
+    return { pos: out, before, after: meshCheck(out), splitEdges, removed, holes, holesLeft, flippedOut, moved };
+  }
+  // STL bytes in -> clean STL bytes out (unchanged bytes when nothing is wrong)
+  function stlFromSoup(pos, header) {
+    const nt = pos.length / 9, buf = new ArrayBuffer(84 + nt * 50), dv = new DataView(buf);
+    const h = (header || 'repaired').slice(0, 80);
+    for (let i = 0; i < h.length; i++) dv.setUint8(i, h.charCodeAt(i) & 127);
+    dv.setUint32(80, nt, true);
+    let o = 84;
+    for (let t = 0; t < nt; t++) {
+      const p = t * 9, ux = pos[p + 3] - pos[p], uy = pos[p + 4] - pos[p + 1], uz = pos[p + 5] - pos[p + 2];
+      const wx = pos[p + 6] - pos[p], wy = pos[p + 7] - pos[p + 1], wz = pos[p + 8] - pos[p + 2];
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx, l = Math.hypot(nx, ny, nz) || 1;
+      dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true); o += 12;
+      for (let k = 0; k < 9; k++) { dv.setFloat32(o, pos[p + k], true); o += 4; }
+      o += 2;
+    }
+    return buf;
+  }
+  // two ways to pair the faces at a crowded edge (by separate piece only / also by fan around its ends):
+  // try both, keep the cleaner result, and give the leftovers one more pass
+  const issues = c => c.open + c.nonManifold + c.reversed + c.degenerate;
+  function repairBest(pos) {
+    let best = meshRepair(pos, { fans: false });
+    if (best.after.ok) return best;
+    const r2 = meshRepair(pos, { fans: true });
+    if (issues(r2.after) < issues(best.after)) best = r2;
+    for (const fans of [false, true]) {
+      if (best.after.ok) break;
+      const r3 = meshRepair(best.pos, { fans });
+      if (issues(r3.after) < issues(best.after)) best = Object.assign(r3, { before: best.before, splitEdges: best.splitEdges + r3.splitEdges, removed: best.removed + r3.removed, holes: best.holes + r3.holes, holesLeft: r3.holesLeft });
+    }
+    return best;
+  }
+  function stlClean(bytes) {
+    const buf = bytes instanceof ArrayBuffer ? bytes : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const pos = parseSTL(buf), chk = meshCheck(pos);
+    if (chk.ok) return { bytes: buf, check: chk, fixed: false };
+    const r = repairBest(pos);
+    return { bytes: stlFromSoup(r.pos, 'checked for Bambu Studio'), check: r.after, before: chk, fixed: true, repair: r };
+  }
+  return { parseSTL, soupIndex, meshCheck, meshRepair, repairBest, stlFromSoup, stlClean };
+})();
+// ===================== MESHFIX-END =====================
 const MM = 10; // 1 模型单位 = 10 mm
 let cur = null;   // 当前曲面几何（摆放、加厚、导出共用）
 
@@ -1473,7 +1799,7 @@ function rebuild(){
   res = comboBuild(res);
   cur = res; cur.raw = res.pos.slice(); cur.rawIdx = res.idx; cur._rawBase = res._rb || null;
   applyPlacement(); faceFlags(); updatePlaceUI();
-  show();
+  show(); chkIdle();
 }
 // 显示：厚度为 0 时画中面；厚度 > 0 时画加厚后的实体（上下两层 + 侧边），与导出的 STL 一致
 function show(){
@@ -1685,7 +2011,9 @@ function shell(){
   if (half <= 0) return {P:Pp, T};
   const O = offsetPos(half), Sx = [];
   for (let i=0; i<T.length; i+=3){ Sx.push(T[i], T[i+1], T[i+2]); Sx.push(T[i]+n, T[i+2]+n, T[i+1]+n); }
-  for (let i=0; i<B.length; i+=2){ const a = B[i], b = B[i+1]; Sx.push(a, b, b+n, a, b+n, a+n); }
+  // 侧墙跟着边界的方向走：上表面有 a→b 的边，侧墙就要走 b→a，否则这段墙朝里（拓竹会报法向反了）
+  const dir = new Set(); for (let i=0; i<T.length; i+=3) for (let k=0; k<3; k++) dir.add(T[i+k]*n + T[i+(k+1)%3]);
+  for (let i=0; i<B.length; i+=2){ let a = B[i], b = B[i+1]; if (dir.has(a*n + b)){ const x = a; a = b; b = x; } Sx.push(a, b, b+n, a, b+n, a+n); }
   return {P:O, T:Sx};
 }
 // 加厚预览：上下两层都保持原朝向（这样两侧颜色和中面一致），侧边单独着色
@@ -1706,6 +2034,12 @@ function stl(){
     for (let v=0; v<Q.length; v+=3){ const p = mv(O, [Q[v], Q[v+1], Q[v+2]]); Q2[v] = p[0]; Q2[v+1] = p[1]; Q2[v+2] = p[2]; }
     Q = Q2;
     if (det3(O) < 0){ T = Array.from(T); for (let i=0; i<T.length; i+=3){ const x = T[i+1]; T[i+1] = T[i+2]; T[i+2] = x; } }
+  }
+  { // 整体朝外（体积为负就整体翻面）
+    let vol = 0;
+    for (let i=0; i<T.length; i+=3){ const a = T[i]*3, b = T[i+1]*3, c = T[i+2]*3;
+      vol += Q[a]*(Q[b+1]*Q[c+2]-Q[b+2]*Q[c+1]) - Q[a+1]*(Q[b]*Q[c+2]-Q[b+2]*Q[c]) + Q[a+2]*(Q[b]*Q[c+1]-Q[b+1]*Q[c]); }
+    if (vol < 0){ T = Array.from(T); for (let i=0; i<T.length; i+=3){ const x = T[i+1]; T[i+1] = T[i+2]; T[i+2] = x; } }
   }
   const nT = T.length/3;
   const buf = new ArrayBuffer(84 + 50*nT), dv = new DataView(buf);
@@ -1809,19 +2143,32 @@ function zip(name, data){
 }
 let dl = null;
 if (window.claude && claude.use) claude.use('downloads').then(d => { dl = d; }).catch(() => {});
+// 拓竹检查：导出的 STL 先按拓竹读文件的方式查一遍，有问题当场修好（和塔楼页同一套 MeshFix）
+function cleanStl(u8){
+  const el = $('#chk-stl');
+  const r = MeshFix.stlClean(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)), c = r.check;
+  const sum = x => x.open + x.nonManifold + x.reversed + x.degenerate;
+  let h;
+  if (!c.ok) h = `<span class="dot bad"></span><b>${T('还有 {k} 处没拆开（多在曲面的尖角上）；拓竹会提示，可以照常切片', {k: sum(c)})}</b>`;
+  else if (r.fixed) h = `<span class="dot fix"></span><b>${T('发现 {k} 处，导出时已自动修好', {k: sum(r.before)})}</b><br>${T('拆开 {e} 条共用边 · 翻正 {f} 处法向', {e: r.repair.splitEdges, f: r.before.reversed})}`;
+  else h = `<span class="dot"></span><b>${T('拓竹检查通过')}</b><br>${T('0 非流形边 · 0 破洞 · 法向一致 · {n} 个三角面', {n: c.tris.toLocaleString()})}`;
+  if (el) el.innerHTML = h;
+  return new Uint8Array(r.bytes);
+}
+function chkIdle(){ const el = $('#chk-stl'); if (el) el.innerHTML = `<span class="dot idle"></span>${T('导出时按拓竹读文件的方式检查一遍，有问题当场修好')}`; }
 $('#b-stl').addEventListener('click', async () => {
   if (!cur) return;
   const tag = S.no + "-" + S.spec.map(([k]) => k + P[k]).join("-") + (P.fl > 0 ? `-${P.fl}F` : "") + `-t${P.t}mm`;
   if (!dl){   // 不在 claude.ai 里（例如 GitHub Pages）：用浏览器普通下载，直接存 .stl
     try {
-      const url = URL.createObjectURL(new Blob([stl()], {type:'model/stl'})), a = document.createElement('a');
+      const url = URL.createObjectURL(new Blob([cleanStl(stl())], {type:'model/stl'})), a = document.createElement('a');
       a.href = url; a.download = `minimal-surface-${tag}.stl`; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000); toast('已导出 STL');
     } catch (e){ toast('这个视图不能下载，请在浏览器里直接打开本页'); }
     return;
   }
   try {
-    await dl.save({filename:`minimal-surface-${tag}.zip`, data:zip(`minimal-surface-${tag}.stl`, stl())});
+    await dl.save({filename:`minimal-surface-${tag}.zip`, data:zip(`minimal-surface-${tag}.stl`, cleanStl(stl()))});
     toast('已导出 STL（zip 压缩包内）');
   } catch (e){
     const c = e && e.code;

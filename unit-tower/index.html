@@ -113,6 +113,25 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 #cap .bar i{display:block;width:22px;height:3px;border-radius:2px;background:#2c2c2e;transition:background .3s}
 #cap .bar i.on{background:var(--t1)}
 #cap .bar i.orbit.on{background:#64d2ff}
+/* 拓竹检查 + 修复 STL */
+.chk{font-size:11.5px;color:var(--t3);margin-top:8px;line-height:1.6}
+.chk:empty{display:none}
+.chk .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:0;background:#30d158}
+.chk .dot.fix{background:#FF9F0A}.chk .dot.bad{background:#ff453a}.chk .dot.idle{background:#48484a}
+.chk b{color:var(--t1);font-weight:500}
+.chk details{margin-top:2px}.chk summary{cursor:pointer;color:var(--t2)}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.62);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;z-index:60}
+.sheet.hidden{display:none}
+.sheetBox{width:min(440px,92vw);background:#1c1c1e;border:0.5px solid var(--line2);border-radius:18px;padding:20px 22px 22px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.sheetHead{display:flex;justify-content:space-between;align-items:center;font-size:15px}
+.sheetHead .link{margin:0}
+.fdrop{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:14px;border:1px dashed #48484a;border-radius:14px;padding:26px 12px;cursor:pointer;transition:border-color .2s,background .2s}
+.fdrop b{font-weight:500;font-size:14px}.fdrop span{color:var(--t3);font-size:11.5px}
+.fdrop.over,.fdrop:hover{border-color:#00c8d2;background:rgba(0,200,210,.05)}
+.fsteps{margin:14px 0 0;padding:0;list-style:none;counter-reset:s;font-size:12px;color:var(--t2)}
+.fsteps li{counter-increment:s;display:flex;align-items:center;gap:9px;line-height:24px}
+.fsteps li::before{content:counter(s);width:16px;height:16px;border-radius:50%;border:1px solid #00c8d2;color:#00c8d2;font-size:10px;line-height:15px;text-align:center;flex:none}
+.fsteps li.done{color:var(--t1)}.fsteps li.done::before{content:'✓';background:#00c8d2;color:#000}
 #toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(28,28,30,.92);border:0.5px solid var(--line2);padding:8px 14px;border-radius:10px;font-size:12px;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}
 #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--t2);font-size:13px;pointer-events:none}
@@ -228,9 +247,12 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       </div>
       <div id="plateChips" class="chips hidden"></div>
       <button class="btn primary" id="btnPrint" style="width:100%;margin-top:8px" data-i18n="btnPrint"></button>
+      <div class="chk" id="chkPrint"></div>
       <div class="row" style="margin-top:18px"><label data-i18n="segTitle"></label></div>
       <div class="read" id="readSeg" style="margin-top:2px"></div>
       <button class="btn" id="btnSeg" style="width:100%;margin-top:8px" data-i18n="btnSeg"></button>
+      <div class="chk" id="chkSeg"></div>
+      <button class="link" id="btnFix" data-i18n="fixLink"></button>
     </div>
 
     <div class="sec">
@@ -241,6 +263,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
         <button class="btn" id="ex3DM">3DM</button>
       </div>
       <div class="read" id="readExport"></div>
+      <div class="chk" id="chkExport"></div>
       <button class="link" id="btnReset" data-i18n="reset"></button>
     </div>
     <div id="nextWrap"><button class="btn primary" id="btnNext" data-i18n="nextPrint"></button></div>
@@ -251,6 +274,15 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     <div id="tools"><button id="btnPlay"></button><button id="btnFit" data-i18n="fit"></button></div>
     <div id="cap" class="hidden"><div class="k" id="capK"></div><div class="t" id="capT"></div><div class="s" id="capS"></div><div class="bar" id="capBar"><i></i><i></i><i></i><i></i><i></i></div></div>
     <div id="toast"></div>
+    <div id="fixSheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="fixTitle">
+      <div class="sheetBox">
+        <div class="sheetHead"><b id="fixTitle" data-i18n="fixTitle"></b><button class="link" id="fixClose" type="button" data-i18n="fixClose"></button></div>
+        <label class="fdrop" id="fixDrop"><input type="file" id="fixFile" accept=".stl,model/stl" hidden><b data-i18n="fixDrop"></b><span data-i18n="fixLocal"></span></label>
+        <ol class="fsteps" id="fixSteps"></ol>
+        <div class="read" id="fixRead" aria-live="polite"></div>
+        <button class="btn primary hidden" id="fixSave" type="button" style="width:100%;margin-top:12px"></button>
+      </div>
+    </div>
     <div id="legend" class="hidden"><span data-i18n="legend"></span><i></i><b id="legA">1.00</b><b id="legB">0.62</b></div>
     <div id="hud"><div class="a" id="hudA"></div><div class="b" data-i18n="hint"></div></div>
     <div id="err"></div>
@@ -260,6 +292,322 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 
 <script>
 // ===================== CORE-BEGIN (pure geometry, no DOM) =====================
+// ===================== MESHFIX-BEGIN (same code in unit-tower/ and minimal-surfaces/) =====================
+// 拓竹检查 / 修复：和切片软件一样，坐标完全相同的点才算同一个点（Bambu Studio / PrusaSlicer 读 STL 的方式）
+const MeshFix = (() => {
+  function bboxDiag(V) {
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < V.length; i += 3) for (let k = 0; k < 3; k++) { const v = V[i + k]; if (v < mn[k]) mn[k] = v; if (v > mx[k]) mx[k] = v; }
+    return Math.hypot(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]) || 1;
+  }
+  function parseSTL(buf) {
+    const dv = new DataView(buf), bytes = new Uint8Array(buf);
+    let bin = buf.byteLength >= 84 && 84 + dv.getUint32(80, true) * 50 === buf.byteLength;
+    if (!bin) { const head = new TextDecoder().decode(bytes.subarray(0, Math.min(1024, bytes.length))).toLowerCase(); if (!(head.trimStart().startsWith('solid') && head.includes('facet')) && buf.byteLength >= 84) bin = true; }
+    if (bin) {
+      const n = Math.min(dv.getUint32(80, true), Math.floor((buf.byteLength - 84) / 50)), pos = new Float32Array(n * 9);
+      for (let i = 0; i < n; i++) { const o = 84 + i * 50 + 12; for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + k * 4, true); }
+      return pos;
+    }
+    const text = new TextDecoder().decode(bytes), re = /vertex\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)/g, out = [];
+    let m; while ((m = re.exec(text))) out.push(+m[1], +m[2], +m[3]);
+    return new Float32Array(out.slice(0, out.length - out.length % 9));
+  }
+  // one winding per connected piece (pieces joined by edges with exactly two faces); keeps the majority
+  function orient(V, F) {
+    const nf = F.length / 3, nv = V.length / 3, nb = Array.from({ length: nf }, () => []);
+    for (const l of edgeTable(F, nv).values()) if (l.length === 2) {
+      const f = (l[0] / 3) | 0, g = (l[1] / 3) | 0, same = F[l[0]] === F[l[1]] ? 1 : 0;
+      nb[f].push(g, same); nb[g].push(f, same);
+    }
+    const flip = new Int8Array(nf).fill(-1), G = new Uint32Array(F);
+    for (let s = 0; s < nf; s++) {
+      if (flip[s] >= 0) continue;
+      flip[s] = 0; const list = [s];
+      for (let i = 0; i < list.length; i++) { const f = list[i], L = nb[f]; for (let j = 0; j < L.length; j += 2) if (flip[L[j]] < 0) { flip[L[j]] = flip[f] ^ L[j + 1]; list.push(L[j]); } }
+      let k = 0; for (const f of list) k += flip[f];
+      if (k * 2 > list.length) for (const f of list) flip[f] ^= 1;
+    }
+    for (let f = 0; f < nf; f++) if (flip[f]) { const t = G[f * 3 + 1]; G[f * 3 + 1] = G[f * 3 + 2]; G[f * 3 + 2] = t; }
+    return G;
+  }
+  // pos: triangle soup (x y z per corner, as written to the STL). Points with bit-identical float32
+  // coordinates are one vertex, exactly as Bambu Studio / PrusaSlicer read an STL.
+  function soupIndex(pos) {
+    const n = pos.length / 3, f32 = pos instanceof Float32Array ? pos : Float32Array.from(pos);
+    const u = new Uint32Array(f32.buffer, f32.byteOffset, f32.length);
+    let cap = 1; while (cap < n * 2) cap <<= 1;
+    const tab = new Int32Array(cap).fill(-1), mask = cap - 1;
+    const idx = new Uint32Array(n), first = [];
+    let nv = 0;
+    for (let i = 0; i < n; i++) {
+      const x = u[i * 3], y = u[i * 3 + 1], z = u[i * 3 + 2];
+      let h = (Math.imul(x, 0x9E3779B1) ^ Math.imul(y, 0x85EBCA77) ^ Math.imul(z, 0xC2B2AE3D)) >>> 0;
+      for (;;) {
+        h &= mask; const j = tab[h];
+        if (j < 0) { tab[h] = i; idx[i] = nv++; first.push(i); break; }
+        if (u[j * 3] === x && u[j * 3 + 1] === y && u[j * 3 + 2] === z) { idx[i] = idx[j]; break; }
+        h++;
+      }
+    }
+    const V = new Float64Array(nv * 3);
+    for (let k = 0; k < nv; k++) { const i = first[k]; V[k * 3] = f32[i * 3]; V[k * 3 + 1] = f32[i * 3 + 1]; V[k * 3 + 2] = f32[i * 3 + 2]; }
+    return { V, F: idx };
+  }
+  // undirected edge table of an indexed mesh: for every edge the list of (face, which edge)
+  function edgeTable(F, nv) {
+    const nf = F.length / 3, m = new Map();
+    for (let f = 0; f < nf; f++) for (let e = 0; e < 3; e++) {
+      const a = F[f * 3 + e], b = F[f * 3 + (e + 1) % 3];
+      if (a === b) continue;
+      const k = a < b ? a * nv + b : b * nv + a;
+      const l = m.get(k); if (l) l.push(f * 3 + e); else m.set(k, [f * 3 + e]);
+    }
+    return m;
+  }
+  // what Bambu Studio counts: open / non-manifold edges, faces wound against their neighbour, zero-area faces
+  function meshCheck(pos) {
+    const { V, F } = soupIndex(pos), nv = V.length / 3, nf = F.length / 3;
+    let degenerate = 0;
+    const G = [];
+    for (let f = 0; f < nf; f++) {
+      const a = F[f * 3], b = F[f * 3 + 1], c = F[f * 3 + 2];
+      if (a === b || b === c || a === c) { degenerate++; continue; }
+      G.push(a, b, c);
+    }
+    const m = edgeTable(G, nv);
+    let open = 0, nonManifold = 0, reversed = 0;
+    for (const l of m.values()) {
+      if (l.length === 1) open++;
+      else if (l.length > 2) nonManifold++;
+      else { const f = l[0], g = l[1]; if (G[f] === G[g]) reversed++; }   // same start vertex = same direction
+    }
+    return { tris: nf, open, nonManifold, reversed, degenerate, ok: !open && !nonManifold && !reversed && !degenerate };
+  }
+
+  // repair a triangle soup so that it reads as clean closed solids:
+  // drop degenerate / duplicate faces -> split edges shared by more than two faces (pair faces around
+  // the edge so each pair encloses material) -> unify winding, solids outward -> close small holes ->
+  // nudge split copies a hair apart (1e-6 of the size) so they stay separate after re-reading.
+  function meshRepair(pos, opt) {
+    const before = meshCheck(pos), useFans = !!(opt && opt.fans);
+    let { V, F } = soupIndex(pos);
+    let nv = V.length / 3;
+    const diag = bboxDiag(V);
+    // 1. degenerate + duplicate faces (the same triangle once each way = an inner double wall: drop both)
+    const fkey = new Map(), keep = [];
+    let removed = 0;
+    for (let f = 0; f < F.length / 3; f++) {
+      const a = F[f * 3], b = F[f * 3 + 1], c = F[f * 3 + 2];
+      if (a === b || b === c || a === c) { removed++; continue; }
+      const ux = V[b * 3] - V[a * 3], uy = V[b * 3 + 1] - V[a * 3 + 1], uz = V[b * 3 + 2] - V[a * 3 + 2];
+      const wx = V[c * 3] - V[a * 3], wy = V[c * 3 + 1] - V[a * 3 + 1], wz = V[c * 3 + 2] - V[a * 3 + 2];
+      if (Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx) <= diag * diag * 1e-20) { removed++; continue; }
+      const lo = Math.min(a, b, c), hi = Math.max(a, b, c), mid = a + b + c - lo - hi, k = lo + ',' + mid + ',' + hi;
+      const g = fkey.get(k);
+      if (g === undefined) { fkey.set(k, keep.length); keep.push(a, b, c); continue; }
+      removed++;
+      if (g < 0) continue;
+      const same = (keep[g] === a && keep[g + 1] === b) || (keep[g + 1] === a && keep[g + 2] === b) || (keep[g + 2] === a && keep[g] === b);
+      if (!same) { keep[g] = keep[g + 1] = keep[g + 2] = -1; fkey.set(k, -1); removed++; }
+    }
+    F = Uint32Array.from(keep.filter(x => x >= 0));
+    const nf = F.length / 3;
+    // 2. pair face-edges: partner[corner] = partner corner (corner f*3+e = edge F[e] -> F[e+1]) or -1
+    const partner = new Int32Array(nf * 3).fill(-1);
+    let splitEdges = 0;
+    const P = (i, k) => V[i * 3 + k];
+    const etab = edgeTable(F, nv);
+    // pieces joined by ordinary edges (two faces): faces at a crowded edge pair up within their own piece first
+    const pc = new Int32Array(nf); for (let i = 0; i < nf; i++) pc[i] = i;
+    const fp = x => { while (pc[x] !== x) { pc[x] = pc[pc[x]]; x = pc[x]; } return x; };
+    for (const l of etab.values()) if (l.length === 2) { const x = fp((l[0] / 3) | 0), y = fp((l[1] / 3) | 0); if (x !== y) pc[x] = y; }
+    // faces at each point (for fans), built on first use
+    let vfS = null, vfL = null;
+    const fanCache = new Map();
+    const fanAt = p => {
+      let r = fanCache.get(p); if (r) return r;
+      if (!vfS) {
+        vfS = new Uint32Array(nv + 1); for (let i = 0; i < F.length; i++) vfS[F[i] + 1]++;
+        for (let i = 0; i < nv; i++) vfS[i + 1] += vfS[i];
+        vfL = new Uint32Array(F.length); const fill = vfS.slice(0, nv);
+        for (let i = 0; i < F.length; i++) vfL[fill[F[i]]++] = (i / 3) | 0;
+      }
+      const fs = Array.from(vfL.subarray(vfS[p], vfS[p + 1])), id = new Map(fs.map((f, i) => [f, i])), par = fs.map((_, i) => i);
+      const root = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+      for (const f of fs) for (let e = 0; e < 3; e++) {
+        const a = F[f * 3 + e], b = F[f * 3 + (e + 1) % 3]; if (a !== p && b !== p) continue;
+        const l2 = etab.get(a < b ? a * nv + b : b * nv + a);
+        if (l2 && l2.length === 2) { const x = root(id.get((l2[0] / 3) | 0)), y = root(id.get((l2[1] / 3) | 0)); if (x !== y) par[x] = y; }
+      }
+      r = f => root(id.get(f)); fanCache.set(p, r); return r;
+    };
+    for (let l of etab.values()) {
+      if (l.length === 2) { partner[l[0]] = l[1]; partner[l[1]] = l[0]; continue; }
+      if (l.length < 3) continue;
+      splitEdges++;
+      // group the faces at this edge: same separate piece, else same fan around either end point
+      // (fan = faces at the point joined through ordinary edges at that point); a group of two that run
+      // opposite ways encloses material and becomes a pair
+      let rest = l;
+      const keys = [c => fp((c / 3) | 0)];
+      if (useFans) keys.push(c => fanAt(F[c])((c / 3) | 0), c => fanAt(F[((c / 3) | 0) * 3 + (c % 3 + 1) % 3])((c / 3) | 0));
+      for (const key of keys) {
+        const groups = new Map();
+        for (const c of rest) { const r = key(c); const g = groups.get(r); if (g) g.push(c); else groups.set(r, [c]); }
+        const left = [];
+        for (const g of groups.values()) {
+          if (g.length === 2 && F[g[0]] !== F[g[1]]) { partner[g[0]] = g[1]; partner[g[1]] = g[0]; }
+          else left.push(...g);
+        }
+        rest = left;
+        if (rest.length < 3) break;
+      }
+      if (rest.length < 2) continue;
+      l = rest;
+      const c0 = l[0], a = F[c0], b = F[((c0 / 3) | 0) * 3 + (c0 % 3 + 1) % 3];
+      const ax = [P(b, 0) - P(a, 0), P(b, 1) - P(a, 1), P(b, 2) - P(a, 2)], al = Math.hypot(...ax) || 1;
+      for (let i = 0; i < 3; i++) ax[i] /= al;
+      let ref = null, ref2 = null;
+      const items = l.map(c => {
+        const f = (c / 3) | 0, o = F[f * 3 + (c % 3 + 2) % 3];
+        let d = [P(o, 0) - P(a, 0), P(o, 1) - P(a, 1), P(o, 2) - P(a, 2)];
+        const dp = d[0] * ax[0] + d[1] * ax[1] + d[2] * ax[2];
+        d = [d[0] - dp * ax[0], d[1] - dp * ax[1], d[2] - dp * ax[2]];
+        const dl = Math.hypot(...d) || 1; d = d.map(x => x / dl);
+        if (!ref) { ref = d; ref2 = [ax[1] * d[2] - ax[2] * d[1], ax[2] * d[0] - ax[0] * d[2], ax[0] * d[1] - ax[1] * d[0]]; }
+        const th = Math.atan2(d[0] * ref2[0] + d[1] * ref2[1] + d[2] * ref2[2], d[0] * ref[0] + d[1] * ref[1] + d[2] * ref[2]);
+        return { c, th, s: F[c] === a ? 1 : -1 };          // +1: the face's normal points toward increasing angle
+      }).sort((p, q) => p.th - q.th);
+      // material lies between face i and i+1 when face i faces back and face i+1 faces forward
+      const k = items.length, used = new Uint8Array(k);
+      for (let i = 0; i < k; i++) {
+        const j = (i + 1) % k, p = items[i], q = items[j];
+        if (!used[i] && !used[j] && p.s < 0 && q.s > 0) { partner[p.c] = q.c; partner[q.c] = p.c; used[i] = used[j] = 1; }
+      }
+      for (let i = 0; i < k; i++) if (!used[i]) for (let j = 1; j < k; j++) {
+        const q = (i + j) % k; if (!used[q]) { partner[items[i].c] = items[q].c; partner[items[q].c] = items[i].c; used[i] = used[q] = 1; break; }
+      }
+    }
+    // 3. split vertices into fans: corners at one vertex join across paired edges
+    const par = new Int32Array(nf * 3); for (let i = 0; i < par.length; i++) par[i] = i;
+    const find = x => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+    const join = (x, y) => { x = find(x); y = find(y); if (x !== y) par[x] = y; };
+    const cornerOf = (f, v) => f * 3 + (F[f * 3] === v ? 0 : F[f * 3 + 1] === v ? 1 : 2);
+    for (let c = 0; c < nf * 3; c++) {
+      const d = partner[c]; if (d < c) continue;
+      const f = (c / 3) | 0, g = (d / 3) | 0, a = F[c], b = F[f * 3 + (c % 3 + 1) % 3];
+      join(cornerOf(f, a), cornerOf(g, a)); join(cornerOf(f, b), cornerOf(g, b));
+    }
+    const newId = new Map(), origin = [], V2 = [], F2 = new Uint32Array(nf * 3);
+    const nCopy = new Uint32Array(nv);
+    for (let c = 0; c < nf * 3; c++) {
+      const r = find(c); let id = newId.get(r);
+      if (id === undefined) { id = origin.length; newId.set(r, id); const v = F[c]; origin.push(v); nCopy[v]++; V2.push(V[v * 3], V[v * 3 + 1], V[v * 3 + 2]); }
+      F2[c] = id;
+    }
+    V = Float64Array.from(V2); F = F2; nv = V.length / 3;
+    // 4. one winding per connected piece
+    F = orient(V, F);
+    // 5. close holes: open edges a -> b, walked backwards (b -> a) into loops; fan small loops from their centre
+    const em = edgeTable(F, nv), nextOf = new Map();
+    for (const l of em.values()) if (l.length === 1) { const c = l[0], a = F[c], b = F[((c / 3) | 0) * 3 + (c % 3 + 1) % 3]; nextOf.set(b, a); }
+    let holes = 0, holesLeft = 0;
+    const Fa = Array.from(F), Va = Array.from(V), seen = new Set();
+    for (const s0 of nextOf.keys()) {
+      if (seen.has(s0)) continue;
+      const loop = [s0]; seen.add(s0);
+      let x = nextOf.get(s0), ok = true, per = 0;
+      while (x !== s0) { if (x === undefined || seen.has(x)) { ok = false; break; } loop.push(x); seen.add(x); x = nextOf.get(x); }
+      const m = loop.length;
+      for (let i = 0; ok && i < m; i++) { const p = loop[i] * 3, q = loop[(i + 1) % m] * 3; per += Math.hypot(V[q] - V[p], V[q + 1] - V[p + 1], V[q + 2] - V[p + 2]); }
+      if (!ok || m < 3 || (m > 64 && per > diag * 0.5)) { holesLeft++; continue; }   // long open rims (an open surface) stay open
+      let cx = 0, cy = 0, cz = 0;
+      for (const v of loop) { cx += V[v * 3]; cy += V[v * 3 + 1]; cz += V[v * 3 + 2]; }
+      const ci = Va.length / 3; Va.push(cx / m, cy / m, cz / m);
+      for (let i = 0; i < m; i++) Fa.push(loop[i], loop[(i + 1) % m], ci);
+      holes++;
+    }
+    V = Float64Array.from(Va); F = Uint32Array.from(Fa); nv = V.length / 3;
+    // 6. every closed piece outward
+    const nf2 = F.length / 3, comp = new Int32Array(nf2).fill(-1), nb = Array.from({ length: nf2 }, () => []);
+    const openF = new Uint8Array(nf2);
+    for (const l of edgeTable(F, nv).values()) {
+      if (l.length === 2) { const f = (l[0] / 3) | 0, g = (l[1] / 3) | 0; nb[f].push(g); nb[g].push(f); }
+      else for (const c of l) openF[(c / 3) | 0] = 1;
+    }
+    let flippedOut = 0;
+    for (let s = 0; s < nf2; s++) {
+      if (comp[s] >= 0) continue;
+      const list = [s]; comp[s] = s; let closed = !openF[s], vol = 0;
+      for (let i = 0; i < list.length; i++) for (const g of nb[list[i]]) if (comp[g] < 0) { comp[g] = s; list.push(g); if (openF[g]) closed = false; }
+      if (!closed) continue;
+      for (const f of list) {
+        const a = F[f * 3] * 3, b = F[f * 3 + 1] * 3, c = F[f * 3 + 2] * 3;
+        vol += V[a] * (V[b + 1] * V[c + 2] - V[b + 2] * V[c + 1]) - V[a + 1] * (V[b] * V[c + 2] - V[b + 2] * V[c]) + V[a + 2] * (V[b] * V[c + 1] - V[b + 1] * V[c]);
+      }
+      if (vol < 0) { flippedOut += list.length; for (const f of list) { const t = F[f * 3 + 1]; F[f * 3 + 1] = F[f * 3 + 2]; F[f * 3 + 2] = t; } }
+    }
+    // 7. split copies of one point: move each a hair into its own faces so the file keeps them apart
+    let mx = 0; for (let i = 0; i < V.length; i++) mx = Math.max(mx, Math.abs(V[i]));
+    const step = Math.max(diag * 2e-6, mx * 2e-6);
+    const acc = new Float64Array(nv * 3), cnt = new Uint32Array(nv);
+    for (let f = 0; f < nf2; f++) {
+      const a = F[f * 3], b = F[f * 3 + 1], c = F[f * 3 + 2];
+      const gx = (V[a * 3] + V[b * 3] + V[c * 3]) / 3, gy = (V[a * 3 + 1] + V[b * 3 + 1] + V[c * 3 + 1]) / 3, gz = (V[a * 3 + 2] + V[b * 3 + 2] + V[c * 3 + 2]) / 3;
+      for (const v of [a, b, c]) if (v < origin.length && nCopy[origin[v]] > 1) { acc[v * 3] += gx; acc[v * 3 + 1] += gy; acc[v * 3 + 2] += gz; cnt[v]++; }
+    }
+    let moved = 0;
+    for (let v = 0; v < origin.length; v++) if (cnt[v]) {
+      const dx = acc[v * 3] / cnt[v] - V[v * 3], dy = acc[v * 3 + 1] / cnt[v] - V[v * 3 + 1], dz = acc[v * 3 + 2] / cnt[v] - V[v * 3 + 2], l = Math.hypot(dx, dy, dz);
+      if (l > 0) { const k = Math.min(step, l * 0.25) / l; V[v * 3] += dx * k; V[v * 3 + 1] += dy * k; V[v * 3 + 2] += dz * k; moved++; }
+    }
+    const out = new Float32Array(F.length * 3);
+    for (let i = 0; i < F.length; i++) { const v = F[i] * 3; out[i * 3] = V[v]; out[i * 3 + 1] = V[v + 1]; out[i * 3 + 2] = V[v + 2]; }
+    return { pos: out, before, after: meshCheck(out), splitEdges, removed, holes, holesLeft, flippedOut, moved };
+  }
+  // STL bytes in -> clean STL bytes out (unchanged bytes when nothing is wrong)
+  function stlFromSoup(pos, header) {
+    const nt = pos.length / 9, buf = new ArrayBuffer(84 + nt * 50), dv = new DataView(buf);
+    const h = (header || 'repaired').slice(0, 80);
+    for (let i = 0; i < h.length; i++) dv.setUint8(i, h.charCodeAt(i) & 127);
+    dv.setUint32(80, nt, true);
+    let o = 84;
+    for (let t = 0; t < nt; t++) {
+      const p = t * 9, ux = pos[p + 3] - pos[p], uy = pos[p + 4] - pos[p + 1], uz = pos[p + 5] - pos[p + 2];
+      const wx = pos[p + 6] - pos[p], wy = pos[p + 7] - pos[p + 1], wz = pos[p + 8] - pos[p + 2];
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx, l = Math.hypot(nx, ny, nz) || 1;
+      dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true); o += 12;
+      for (let k = 0; k < 9; k++) { dv.setFloat32(o, pos[p + k], true); o += 4; }
+      o += 2;
+    }
+    return buf;
+  }
+  // two ways to pair the faces at a crowded edge (by separate piece only / also by fan around its ends):
+  // try both, keep the cleaner result, and give the leftovers one more pass
+  const issues = c => c.open + c.nonManifold + c.reversed + c.degenerate;
+  function repairBest(pos) {
+    let best = meshRepair(pos, { fans: false });
+    if (best.after.ok) return best;
+    const r2 = meshRepair(pos, { fans: true });
+    if (issues(r2.after) < issues(best.after)) best = r2;
+    for (const fans of [false, true]) {
+      if (best.after.ok) break;
+      const r3 = meshRepair(best.pos, { fans });
+      if (issues(r3.after) < issues(best.after)) best = Object.assign(r3, { before: best.before, splitEdges: best.splitEdges + r3.splitEdges, removed: best.removed + r3.removed, holes: best.holes + r3.holes, holesLeft: r3.holesLeft });
+    }
+    return best;
+  }
+  function stlClean(bytes) {
+    const buf = bytes instanceof ArrayBuffer ? bytes : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const pos = parseSTL(buf), chk = meshCheck(pos);
+    if (chk.ok) return { bytes: buf, check: chk, fixed: false };
+    const r = repairBest(pos);
+    return { bytes: stlFromSoup(r.pos, 'checked for Bambu Studio'), check: r.after, before: chk, fixed: true, repair: r };
+  }
+  return { parseSTL, soupIndex, meshCheck, meshRepair, repairBest, stlFromSoup, stlClean };
+})();
+// ===================== MESHFIX-END =====================
 const Core = (() => {
   function parseSTL(buf) {
     const dv = new DataView(buf);
@@ -662,6 +1010,75 @@ const Core = (() => {
     return buf;
   }
 
+  // the whole tower as ONE closed solid: place every floor's mid-surface, weld the points where a floor's
+  // top edge meets the next floor's bottom edge, then thicken once. Seams become ordinary surface: no faces
+  // touching faces, no edge shared by four faces. Wall = the on-screen wall scaled with each floor (t/2 a side).
+  // flat (joining units): open edges at the tower's bottom / top, and any seam part that did not weld, stay flat.
+  // base: open mid-surface { V, F } (file units). Returns { V, F, welded, seams } in file units * k.
+  function towerSolid(base, c, fl, t, flat, k) {
+    const nb = base.V.length / 3, nf0 = base.F.length / 3, nfl = fl.length;
+    const es = edgeStats(base.F, nb), isB = new Uint8Array(nb);
+    for (const [a, b] of es.boundary) { isB[a] = 1; isB[b] = 1; }
+    // weld distance: a fifth of a typical edge along the open boundary (seams sampled a little differently,
+    // or a twist rounded to 0.5°, leave the two edges up to a few thousandths apart)
+    const bl = es.boundary.map(([a, b]) => Math.hypot(base.V[a * 3] - base.V[b * 3], base.V[a * 3 + 1] - base.V[b * 3 + 1], base.V[a * 3 + 2] - base.V[b * 3 + 2])).sort((x, y) => x - y);
+    const bb = bbox(base.V), tol = Math.max((Math.hypot(...bb.size) || 1) * 1e-6, bl.length ? bl[bl.length >> 1] * 0.2 : 0), cell = tol;
+    const claimed = new Int32Array(nb * nfl).fill(-1);
+    const V = new Float64Array(nb * nfl * 3), Wd = new Float64Array(nb * nfl), map = new Int32Array(nb * nfl), fid = new Int32Array(nb * nfl);
+    const grid = new Map();
+    let nv = 0, welded = 0;
+    for (const f of fl) for (let v = 0; v < nb; v++) {
+      const q = xf(base.V[v * 3], base.V[v * 3 + 1], base.V[v * 3 + 2], c, f), g = f.i * nb + v;
+      const w = t / 2 * scaleAt(f, base.V[v * 3 + 2]);
+      if (isB[v]) {
+        const gx = Math.floor(q[0] / cell), gy = Math.floor(q[1] / cell), gz = Math.floor(q[2] / cell);
+        let hit = -1, best = tol;
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+          const l = grid.get((gx + dx) + ',' + (gy + dy) + ',' + (gz + dz));
+          if (l) for (const j of l) {
+            if (fid[j] === f.i || claimed[j] === f.i) continue;            // other floors only, one partner per floor
+            const d = Math.hypot(V[j * 3] - q[0], V[j * 3 + 1] - q[1], V[j * 3 + 2] - q[2]);
+            if (d <= best) { best = d; hit = j; }
+          }
+        }
+        if (hit >= 0) { map[g] = hit; claimed[hit] = f.i; Wd[hit] = (Wd[hit] + w) / 2; welded++; continue; }
+        const key = gx + ',' + gy + ',' + gz, l = grid.get(key); if (l) l.push(nv); else grid.set(key, [nv]);
+      }
+      V[nv * 3] = q[0]; V[nv * 3 + 1] = q[1]; V[nv * 3 + 2] = q[2]; Wd[nv] = w; fid[nv] = f.i; map[g] = nv++;
+    }
+    const Fl = [];
+    for (const f of fl) for (let i = 0; i < nf0 * 3; i += 3) {
+      const a = map[f.i * nb + base.F[i]], b = map[f.i * nb + base.F[i + 1]], d = map[f.i * nb + base.F[i + 2]];
+      if (a !== b && b !== d && a !== d) Fl.push(a, b, d);
+    }
+    const F = Uint32Array.from(Fl);
+    const Vt = V.subarray(0, nv * 3), w = Wd.subarray(0, nv);
+    let planes;
+    if (flat) {
+      planes = [];
+      for (const f of fl) planes.push({ z: f.z + flat.z0, tol: flat.tol, boundary: true }, { z: f.z + flat.z1, tol: flat.tol, boundary: true });
+    }
+    const sh = shell(Vt, F, t, planes, { a: w, b: w, thin: null });
+    if (flat) { const z0 = fl[0].z + flat.z0, z1 = fl[nfl - 1].z + flat.z1; for (let i = 2; i < sh.V.length; i += 3) sh.V[i] = Math.min(z1, Math.max(z0, sh.V[i])); }
+    for (let i = 0; i < sh.V.length; i++) sh.V[i] *= k;
+    return { V: sh.V, F: sh.F, welded, seams: nfl - 1 };
+  }
+  function meshSTL(V, F, header) {
+    const nt = F.length / 3, buf = new ArrayBuffer(84 + nt * 50), dv = new DataView(buf);
+    for (let i = 0; i < Math.min(80, header.length); i++) dv.setUint8(i, header.charCodeAt(i) & 127);
+    dv.setUint32(80, nt, true);
+    let o = 84;
+    for (let t = 0; t < F.length; t += 3) {
+      const a = F[t] * 3, b = F[t + 1] * 3, d = F[t + 2] * 3;
+      const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2], wx = V[d] - V[a], wy = V[d + 1] - V[a + 1], wz = V[d + 2] - V[a + 2];
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx, l = Math.hypot(nx, ny, nz) || 1;
+      dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true); o += 12;
+      for (const i of [a, b, d]) { dv.setFloat32(o, V[i], true); dv.setFloat32(o + 4, V[i + 1], true); dv.setFloat32(o + 8, V[i + 2], true); o += 12; }
+      o += 2;
+    }
+    return buf;
+  }
+
   function exportOBJ(V, F, c, fl, k) {
     const nv = V.length / 3;
     const parts = ['# Unit Tower generator (gh logic), ' + fl.length + ' floors\n'];
@@ -769,6 +1186,51 @@ const Core = (() => {
     const q = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]];
     for (const [i, j, k] of q) F.push(b + i, b + j, b + k);
   }
+  // union of axis-aligned rectangles (text space u, v) as ONE closed, manifold solid between z0 and z1:
+  // cells of the grid through all rectangle edges, top / bottom per filled cell, walls only where filled meets empty.
+  // (Separate boxes would share edges and corners -> "non-manifold edges" in the slicer.)
+  // map(u, v) -> [x, y]: a rotation (no mirror; the winding is checked anyway)
+  function rectSolid(R, z0, z1, map, V, F) {
+    const xs = [...new Set(R.flatMap(r => [r[0], r[2]]))].sort((a, b) => a - b), ys = [...new Set(R.flatMap(r => [r[1], r[3]]))].sort((a, b) => a - b);
+    const nx = xs.length - 1, ny = ys.length - 1;
+    if (nx < 1 || ny < 1) return;
+    const on = new Uint8Array(nx * ny), at = (i, j) => i >= 0 && j >= 0 && i < nx && j < ny ? on[j * nx + i] : 0;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const u = (xs[i] + xs[i + 1]) / 2, v = (ys[j] + ys[j + 1]) / 2;
+      if (R.some(r => u > r[0] && u < r[2] && v > r[1] && v < r[3])) on[j * nx + i] = 1;
+    }
+    // two cells touching only at a corner would share a single vertical edge: fill one of the two others
+    for (let again = true; again;) {
+      again = false;
+      for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+        const a = at(i, j), b = at(i + 1, j), c = at(i, j + 1), d = at(i + 1, j + 1);
+        if (a && d && !b && !c) { on[j * nx + i + 1] = 1; again = true; }
+        else if (b && c && !a && !d) { on[j * nx + i] = 1; again = true; }
+      }
+    }
+    const base = V.length / 3, id = new Map(), node = (i, j, top) => {
+      const k = (j * (nx + 1) + i) * 2 + top; let n = id.get(k);
+      if (n === undefined) { n = V.length / 3; id.set(k, n); const [x, y] = map(xs[i], ys[j]); V.push(x, y, top ? z1 : z0); }
+      return n;
+    };
+    const f0 = F.length, quad = (a, b, c, d) => F.push(a, b, c, a, c, d);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      if (!at(i, j)) continue;
+      quad(node(i, j, 1), node(i + 1, j, 1), node(i + 1, j + 1, 1), node(i, j + 1, 1));
+      quad(node(i, j, 0), node(i, j + 1, 0), node(i + 1, j + 1, 0), node(i + 1, j, 0));
+      if (!at(i + 1, j)) quad(node(i + 1, j, 0), node(i + 1, j + 1, 0), node(i + 1, j + 1, 1), node(i + 1, j, 1));
+      if (!at(i - 1, j)) quad(node(i, j + 1, 0), node(i, j, 0), node(i, j, 1), node(i, j + 1, 1));
+      if (!at(i, j + 1)) quad(node(i + 1, j + 1, 0), node(i, j + 1, 0), node(i, j + 1, 1), node(i + 1, j + 1, 1));
+      if (!at(i, j - 1)) quad(node(i, j, 0), node(i + 1, j, 0), node(i + 1, j, 1), node(i, j, 1));
+    }
+    let vol = 0;
+    for (let t = f0; t < F.length; t += 3) {
+      const a = F[t] * 3, b = F[t + 1] * 3, c = F[t + 2] * 3;
+      vol += V[a] * (V[b + 1] * V[c + 2] - V[b + 2] * V[c + 1]) - V[a + 1] * (V[b] * V[c + 2] - V[b + 2] * V[c]) + V[a + 2] * (V[b] * V[c + 1] - V[b + 1] * V[c]);
+    }
+    if (vol < 0) for (let t = f0; t < F.length; t += 3) { const x = F[t + 1]; F[t + 1] = F[t + 2]; F[t + 2] = x; }
+    return base;
+  }
   const SEG = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g' };
   // 7-segment text as raised boxes; returns rectangles in (u,v) text space
   function glyphRects(text, W, H, bar, gap) {
@@ -853,11 +1315,8 @@ const Core = (() => {
       if (!spot) continue;
       const Vn = Array.from(V), Fn = Array.from(F);
       const z0 = spot.z - 0.3, z1 = spot.z + 0.6;
-      for (const [u0, v0, u1, v1] of g.R) {
-        const uc = u0 - g.width / 2, uc1 = u1 - g.width / 2, vc = v0 - g.height / 2, vc1 = v1 - g.height / 2;
-        if (spot.along === 'x') boxTris(spot.x + uc, spot.y + vc, z0, spot.x + uc1, spot.y + vc1, z1, Vn, Fn);
-        else boxTris(spot.x - vc1, spot.y + uc, z0, spot.x - vc, spot.y + uc1, z1, Vn, Fn);
-      }
+      const map = spot.along === 'x' ? (u, v) => [spot.x + u - g.width / 2, spot.y + v - g.height / 2] : (u, v) => [spot.x - (v - g.height / 2), spot.y + u - g.width / 2];
+      rectSolid(g.R, z0, z1, map, Vn, Fn);
       return { V: new Float64Array(Vn), F: new Uint32Array(Fn), placed: true, size: H };
     }
     return { V, F, placed: false };
@@ -961,7 +1420,7 @@ const Core = (() => {
         const [rx0, ry0, rx1, ry1] = pl.rect, [lx0, ly0, lx1, ly1] = pl.link;
         boxTris(rx0 - ox, ry0 - oy, 0, rx1 - ox, ry1 - oy, TAG.plateZ, Vn, Fn);
         boxTris(lx0 - ox, ly0 - oy, 0, lx1 - ox, ly1 - oy, TAG.linkZ, Vn, Fn);
-        for (const [u0, v0, u1, v1] of pl.g.R) boxTris(rx0 - ox + TAG.pad + u0, ry0 - oy + TAG.pad + v0, TAG.plateZ - 0.1, rx0 - ox + TAG.pad + u1, ry0 - oy + TAG.pad + v1, TAG.textZ, Vn, Fn);
+        rectSolid(pl.g.R, TAG.plateZ - 0.1, TAG.textZ, (u, v) => [rx0 - ox + TAG.pad + u, ry0 - oy + TAG.pad + v], Vn, Fn);
         out = { V: new Float64Array(Vn), F: new Uint32Array(Fn), placed: true, tagged: true, body: { V: W, F: sh.F } };
       }
       out.name = floorNo + tag;
@@ -1399,9 +1858,9 @@ const Core = (() => {
     return t.join('\n');
   }
 
-  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, envScale, floors, scaleAt, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, printability, bedPlane, segmentFloor, addLabel, formField, formWalls, nearestIndex, glyphRects, zipEntry, zipBlobParts, crc32, assemblySVG, footprintMask, rotMask, packPlates, placeOnPlate };
+  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, envScale, floors, scaleAt, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, towerSolid, meshSTL, rectSolid, printability, bedPlane, segmentFloor, addLabel, formField, formWalls, nearestIndex, glyphRects, zipEntry, zipBlobParts, crc32, assemblySVG, footprintMask, rotMask, packPlates, placeOnPlate };
 })();
-if (typeof module !== 'undefined') module.exports = Core;
+if (typeof module !== 'undefined') module.exports = Object.assign(Core, { MeshFix });
 // ===================== CORE-END =====================
 </script>
 
@@ -1446,6 +1905,10 @@ const I18N = {
     formRead: '塔高 {H} mm · 单片 {w} mm', formThin: '{p}% 的窄处按形收薄（最薄约 {m} mm），预览里标成橙色', formThinNone: '壁处处是 {t} mm',
     formManual: '手动比例：这个比例下壁最多约 {m} mm，再厚的地方按形收薄', formTooBig: '单片放不进 A1：保形时壁最厚 {m} mm', formFixWall: '壁厚改成 {m} mm',
     recSeg: '推荐整段打印（塔不细）', recPieces: '推荐分件打印（塔细长：高是宽的 {r} 倍）',
+    chkHint: '导出时自动做拓竹检查（非流形边、破洞、法向），有问题当场修好', chkOk: '拓竹检查通过', chkOkD: '0 非流形边 · 0 破洞 · 法向一致 · {n} 个文件', chkMerged: '整座塔是一个闭合实体', chkFixed: '发现 {k} 处，导出时已自动修好', chkFixedD: '{m} / {n} 个文件修过', chkFiles: '看是哪几个文件', chkLeft: '还有 {k} 处没拆开（多在曲面的尖角上）；拓竹会提示，可以照常切片', chkBig: '文件太大（{t} 万面），没有检查', chkBigTower: '模型太大，层与层分开导出、没有合并', merging: '合并成一个实体…', checking: '检查…',
+    fixLink: '修复 STL…', fixTitle: '修复 STL', fixClose: '关闭', fixDrop: '把 STL 拖到这里，或点这里选文件', fixLocal: '只在浏览器里处理，不上传',
+    fixSteps: ['读入（二进制 / 文本 STL）', '合并坐标相同的点', '删掉没有面积、重复的三角形', '拆开被 3 个以上面共用的边', '统一法向，并让整体朝外', '补上小破洞', '再检查一遍'],
+    fixBusy: '处理中… {n} 万面', fixClean: '这个文件已经是干净的：{t} 个三角面，拓竹不会报错。', fixDone: '修好了：拆开 {e} 条共用边 · 删掉 {r} 个坏三角形 · 翻正 {f} 处法向 · 补上 {h} 个洞', fixAfter: '修复后：{a}', fixAfterOk: '拓竹检查通过', fixLeft: '{o} 条破边、{m} 条共用边、{v} 处法向还在', fixHoleLeft: '{h} 个大洞没补（可能本来就是开放曲面）', fixSave: '下载 {name}', fixFail: '读不了这个文件：', fixSuffix: '_修复',
     segTitle: '整段打印', btnSeg: '导出整段 STL', segRead: '{n} 段 · 每段 {f} 层 · 高 {h} mm', segRead1: '整塔 1 件 · {f} 层 · 高 {h} mm', segNote: '立着打印，层与层已经连在一起；曲面下方悬空的地方要在切片软件里开支撑。',
     segOnlyConn: '只用于衔接型单体（上下层的边能对上）。', segGap: '净高为 0 时才能整段打印。', segTall: '一层就超过 250 mm 高，请换小一点的比例。', segProg: '段 {s}/{n} · 层 {i}/{m}', segDone: '已导出 {n} 段', segFile: '段', segFloors: '{a}-{b}层', segWord: '整段',
     segN1: '单体塔楼 · 整段打印', segN2: '共 {n} 段，都按塔里的方向导出：从下往上按段号粘合，段与段之间不用再转角度。',
@@ -1507,6 +1970,10 @@ const I18N = {
     formRead: 'Tower {H} mm tall · pieces {w} mm', formThin: '{p}% narrow spots get a thinner wall to keep the form (down to about {m} mm) — orange in the preview', formThinNone: 'The wall is {t} mm everywhere',
     formManual: 'Manual scale: at this scale the wall can be about {m} mm; thicker spots are thinned to keep the form', formTooBig: 'Pieces do not fit the A1: with the form kept the wall can be at most {m} mm', formFixWall: 'Set the wall to {m} mm',
     recSeg: 'Printing in segments is recommended (the tower is not slender)', recPieces: 'Printing in parts is recommended (slender tower: {r}× taller than wide)',
+    chkHint: 'Each export is checked the way Bambu Studio reads it (non-manifold edges, holes, normals) and fixed on the spot', chkOk: 'Bambu check passed', chkOkD: '0 non-manifold edges · 0 holes · normals agree · {n} files', chkMerged: 'the whole tower is one closed solid', chkFixed: '{k} problems found, fixed during export', chkFixedD: '{m} of {n} files fixed', chkFiles: 'which files', chkLeft: '{k} spots could not be separated (mostly at sharp corners of the surface); Bambu Studio will warn, slicing works as usual', chkBig: 'file too large ({t}0k faces), not checked', chkBigTower: 'model too large: floors exported separately, not merged', merging: 'Merging into one solid…', checking: 'Checking…',
+    fixLink: 'Repair STL…', fixTitle: 'Repair STL', fixClose: 'Close', fixDrop: 'Drop an STL here, or click to choose', fixLocal: 'Processed in the browser, nothing is uploaded',
+    fixSteps: ['Read (binary / ASCII STL)', 'Merge identical points', 'Remove zero-area and duplicate triangles', 'Split edges shared by more than two faces', 'Unify normals, solids facing outward', 'Close small holes', 'Check again'],
+    fixBusy: 'Working… {n}0k faces', fixClean: 'This file is already clean: {t} triangles, Bambu Studio will not complain.', fixDone: 'Repaired: {e} shared edges split · {r} bad triangles removed · {f} normals turned · {h} holes closed', fixAfter: 'After repair: {a}', fixAfterOk: 'Bambu check passed', fixLeft: '{o} open edges, {m} shared edges, {v} normals left', fixHoleLeft: '{h} large holes left open (perhaps an open surface)', fixSave: 'Download {name}', fixFail: 'Cannot read this file: ', fixSuffix: '_repaired',
     segTitle: 'Print in segments', btnSeg: 'Export segment STL', segRead: '{n} segments · {f} floors each · {h} mm tall', segRead1: 'Whole tower in 1 piece · {f} floors · {h} mm tall', segNote: 'Printed upright, floors already joined; turn on supports in the slicer for the overhanging undersides.',
     segOnlyConn: 'Only for joining units (floors that meet edge to edge).', segGap: 'Needs clear height 0.', segTall: 'One floor is already taller than 250 mm — choose a smaller scale.', segProg: 'Segment {s}/{n} · floor {i}/{m}', segDone: 'Exported {n} segment(s)', segFile: 'segment', segFloors: 'floors{a}-{b}', segWord: 'segments',
     segN1: 'Unit Tower · segments', segN2: '{n} segments, all exported in the tower\'s own orientation: glue bottom-up by number, no turning between segments.',
@@ -1604,6 +2071,7 @@ function rebuild() {
   halves = null;
   PR.preview = 0;
   packCache = null; setupCache = null; pieceCache.clear();
+  for (const id in CHK) CHK[id] = null; renderChks();
   uploadMesh();
   updateInfo();
   update(true);
@@ -2386,7 +2854,7 @@ $('btnSeg').onclick = async () => {
   const btn = $('btnSeg'), sp = segPlan(); if (!sp.ok) return;
   btn.disabled = true;
   try {
-    const fl = Core.floors(params()), k = printFactor(), files = [], one = [{ i: 0, z: 0, s: 1, th: 0 }];
+    const fl = Core.floors(params()), k = printFactor(), files = [], one = [{ i: 0, z: 0, s: 1, th: 0 }], acc = newAcc();
     for (let q = 0; q < sp.n; q++) {
       const a = q * sp.per, b = Math.min(S.count, a + sp.per), parts = [];
       let nv = 0, nf = 0;
@@ -2399,7 +2867,9 @@ $('btnSeg').onclick = async () => {
       const V = new Float64Array(nv), F = new Uint32Array(nf);
       let ov = 0, of = 0;
       for (const g of parts) { V.set(g.V, ov); for (let i = 0; i < g.F.length; i++) F[of + i] = g.F[i] + ov / 3; ov += g.V.length; of += g.F.length; }
-      files.push({ name: `${t('segFile')}${String(q + 1).padStart(2, '0')}_${t('segFloors', { a: a + 1, b })}.stl`, data: new Uint8Array(Core.exportSTL(V, F, [0, 0, 0], one, 1)) });
+      const nm = `${t('segFile')}${String(q + 1).padStart(2, '0')}_${t('segFloors', { a: a + 1, b })}.stl`;
+      btn.textContent = t('checking'); await new Promise(r => setTimeout(r, 0));
+      files.push({ name: nm, data: cleanSTL(Core.exportSTL(V, F, [0, 0, 0], one, 1), nm, acc) });
     }
     const stem = `${baseName()}_1-${PR.den}_${t('segWord')}`;
     if (files.length === 1) save(files[0].data, stem + '.stl', 'model/stl');
@@ -2411,6 +2881,7 @@ $('btnSeg').onclick = async () => {
       entries.push(await Core.zipEntry(`${stem}/${t('notesFile')}`, new TextEncoder().encode('\ufeff' + notes)));
       save(new Blob(Core.zipBlobParts(entries), { type: 'application/zip' }), stem + '.zip', 'application/zip');
     }
+    setChk('chkSeg', acc);
     toast(t('segDone', { n: sp.n }));
   } catch (e) { console.error(e); toast(t('exportFail') + errText(e)); }
   btn.textContent = t('btnSeg'); update(false);
@@ -2425,7 +2896,7 @@ $('btnPrint').onclick = async () => {
     const entries = [], missing = new Set(), done = new Set();
     const plateOf = {};
     pk.plates.forEach((p, i) => p.forEach(it => { plateOf[it.name] = i + 1; }));
-    const one = [{ i: 0, z: 0, s: 1, th: 0 }];
+    const one = [{ i: 0, z: 0, s: 1, th: 0 }], acc = newAcc();
     for (let i = 0; i < pk.plates.length; i++) {
       const list = pk.plates[i];
       btn.textContent = t('plateProg', { i: i + 1, n: pk.plates.length });
@@ -2433,11 +2904,12 @@ $('btnPrint').onclick = async () => {
       const g = plateMesh(list, fl);
       g.missing.forEach(n => missing.add(n));
       const tag = String(i + 1).padStart(2, '0');
-      entries.push(await Core.zipEntry(`${folder}${t('fPlates')}/${t('plateFile')}${tag}.stl`, new Uint8Array(Core.exportSTL(g.V, g.F, [0, 0, 0], one, 1))));
+      const pn = `${t('plateFile')}${tag}.stl`;
+      entries.push(await Core.zipEntry(`${folder}${t('fPlates')}/${pn}`, cleanSTL(Core.exportSTL(g.V, g.F, [0, 0, 0], one, 1), pn, acc)));
       for (const it of list) {
         if (done.has(it.name)) continue;
         const pc = pieceByName(it.name, fl);
-        entries.push(await Core.zipEntry(`${folder}${t('fPieces')}/${it.name}.stl`, new Uint8Array(Core.exportSTL(pc.V, pc.F, [0, 0, 0], one, 1))));
+        entries.push(await Core.zipEntry(`${folder}${t('fPieces')}/${it.name}.stl`, cleanSTL(Core.exportSTL(pc.V, pc.F, [0, 0, 0], one, 1), it.name + '.stl', acc)));
         done.add(it.name);
       }
     }
@@ -2459,6 +2931,7 @@ $('btnPrint').onclick = async () => {
     ].join('\r\n');
     entries.push(await Core.zipEntry(folder + t('notesFile'), enc.encode('﻿' + notes)));
     save(new Blob(Core.zipBlobParts(entries), { type: 'application/zip' }), `${baseName()}_1-${PR.den}_${t('folder')}.zip`, 'application/zip');
+    setChk('chkPrint', acc);
     toast(t('exported', { p: pk.plates.length, n: done.size }) + (missing.size ? t('exportedMissing', { n: missing.size }) : ''));
   } catch (e) { console.error(e); toast(t('exportFail') + errText(e)); }
   btn.disabled = false; btn.textContent = t('btnPrint');
@@ -2466,6 +2939,75 @@ $('btnPrint').onclick = async () => {
 
 let toastT;
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+
+// ---------- 拓竹检查：每个导出的 STL 按拓竹读文件的方式查一遍，有问题当场修好 ----------
+const CHK = { chkPrint: null, chkSeg: null, chkExport: null };
+const CHK_MAX = 6e6;                                       // faces; bigger files are not checked
+const newAcc = () => ({ files: 0, fixed: 0, found: 0, left: 0, list: [], bad: [], big: 0, bigT: 0, merged: false, bigTower: false });
+function cleanSTL(buf, name, acc) {
+  acc.files++;
+  const nt = (buf.byteLength - 84) / 50;
+  if (nt > CHK_MAX) { acc.big++; acc.bigT = Math.max(acc.bigT, nt); return new Uint8Array(buf); }
+  const r = MeshFix.stlClean(buf), sum = c => c.open + c.nonManifold + c.reversed + c.degenerate;
+  if (r.fixed) { acc.fixed++; acc.found += sum(r.before); acc.list.push(name); }
+  if (!r.check.ok) { acc.left += sum(r.check); acc.bad.push(name); }
+  return new Uint8Array(r.bytes);
+}
+function renderChk(id) {
+  const el = $(id), a = CHK[id];
+  if (!el) return;
+  if (!a) { el.innerHTML = `<span class="dot idle"></span>${t('chkHint')}`; return; }
+  const esc = x => String(x).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const files = l => l.length ? `<details><summary>${t('chkFiles')}</summary>${l.map(esc).join('<br>')}</details>` : '';
+  let h;
+  if (a.left) h = `<span class="dot bad"></span><b>${t('chkLeft', { k: a.left })}</b>${files(a.bad)}`;
+  else if (a.fixed) h = `<span class="dot fix"></span><b>${t('chkFixed', { k: a.found })}</b><br>${t('chkFixedD', { m: a.fixed, n: a.files })}${files(a.list)}`;
+  else if (a.big === a.files) h = `<span class="dot idle"></span>${t('chkBig', { t: Math.round(a.bigT / 1e4) })}`;
+  else h = `<span class="dot"></span><b>${t('chkOk')}</b>${a.merged ? ' · ' + t('chkMerged') : ''}<br>${t('chkOkD', { n: a.files })}`;
+  if (a.bigTower) h += `<br>${t('chkBigTower')}`;
+  el.innerHTML = h;
+}
+function renderChks() { for (const id in CHK) renderChk(id); }
+function setChk(id, acc) { CHK[id] = acc; renderChk(id); }
+
+// ---------- 修复 STL：任意 STL 拖进来，本地修好再下载（formware 那类网站做的事） ----------
+const FIX = { out: null, name: '' };
+function fixSteps(done) {
+  $('fixSteps').innerHTML = t('fixSteps').map((x, i) => `<li class="${i < done ? 'done' : ''}">${x}</li>`).join('');
+}
+function openFix() { FIX.out = null; $('fixRead').textContent = ''; $('fixSave').classList.add('hidden'); fixSteps(0); $('fixSheet').classList.remove('hidden'); $('fixClose').focus(); }
+function closeFix() { $('fixSheet').classList.add('hidden'); }
+async function runFix(file) {
+  const read = $('fixRead'); $('fixSave').classList.add('hidden'); FIX.out = null;
+  try {
+    const buf = await file.arrayBuffer();
+    const pos = MeshFix.parseSTL(buf);
+    if (!pos.length) throw new Error('0 triangles');
+    fixSteps(1); read.textContent = t('fixBusy', { n: Math.round(pos.length / 9 / 1e4) });
+    await new Promise(r => setTimeout(r, 30));
+    const before = MeshFix.meshCheck(pos);
+    if (before.ok) { fixSteps(7); read.textContent = t('fixClean', { t: before.tris.toLocaleString() }); return; }
+    const r = MeshFix.repairBest(pos);
+    fixSteps(7);
+    const a = r.after;
+    let h = t('fixDone', { e: r.splitEdges, r: r.removed, f: before.reversed, h: r.holes }) + '<br>' +
+      t('fixAfter', { a: a.ok ? `<span class="ok">${t('fixAfterOk')}</span>` : `<span class="caution">${t('fixLeft', { o: a.open, m: a.nonManifold, v: a.reversed })}</span>` });
+    if (r.holesLeft) h += '<br>' + t('fixHoleLeft', { h: r.holesLeft });
+    read.innerHTML = h;
+    FIX.out = MeshFix.stlFromSoup(r.pos, 'repaired in Unit Tower generator');
+    FIX.name = file.name.replace(/\.stl$/i, '') + t('fixSuffix') + '.stl';
+    $('fixSave').textContent = t('fixSave', { name: FIX.name }); $('fixSave').classList.remove('hidden');
+  } catch (e) { console.error(e); fixSteps(0); read.innerHTML = `<span class="warn">${t('fixFail')}${String(e && e.message || e)}</span>`; }
+}
+$('btnFix').onclick = openFix;
+$('fixClose').onclick = closeFix;
+$('fixSheet').addEventListener('click', e => { if (e.target === $('fixSheet')) closeFix(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('fixSheet').classList.contains('hidden')) closeFix(); });
+$('fixFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) runFix(f); e.target.value = ''; });
+for (const ev of ['dragenter', 'dragover']) $('fixSheet').addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); $('fixDrop').classList.add('over'); });
+$('fixSheet').addEventListener('dragleave', e => { e.stopPropagation(); if (!e.relatedTarget || !$('fixSheet').contains(e.relatedTarget)) $('fixDrop').classList.remove('over'); });
+$('fixSheet').addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); $('fixDrop').classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) runFix(f); });
+$('fixSave').onclick = () => { if (FIX.out) save(FIX.out, FIX.name, 'model/stl'); };
 
 // ---------- export ----------
 const unitName = () => S.unit === 0.001 ? 'Millimeters' : S.unit === 0.01 ? 'Centimeters' : 'Meters';
@@ -2481,7 +3023,21 @@ const busy = (btn, f) => async () => {
   try { await f(); } catch (e) { console.error(e); toast(t('exportFail') + errText(e)); }
   btn.disabled = false; btn.textContent = old;
 };
-$('exSTL').onclick = busy($('exSTL'), () => save(Core.exportSTL(geo.V, geo.F, geo.c, Core.floors(params()), 1), baseName() + '.stl', 'model/stl'));
+// 衔接型、净高 0：整座塔合成一个闭合实体（接缝处的点焊在一起再整体加厚），不再是 20 个互相贴着的实体
+$('exSTL').onclick = busy($('exSTL'), async () => {
+  const fl = Core.floors(params()), acc = newAcc(), btn = $('exSTL');
+  const joined = !!geo.thick && SNAP.kind === 'conn' && S.gap === 0 && fl.length > 1;
+  let buf;
+  if (joined && baseMesh.V.length / 3 * fl.length <= 1.5e6) {
+    btn.textContent = t('merging'); await new Promise(r => setTimeout(r, 30));
+    const r = Core.towerSolid(baseMesh, geo.c, fl, S.thick / S.unit, geo.flat || null, 1);
+    buf = Core.meshSTL(r.V, r.F, 'Unit Tower generator - one closed solid'); acc.merged = true;
+  } else { buf = Core.exportSTL(geo.V, geo.F, geo.c, fl, 1); acc.bigTower = joined; }
+  btn.textContent = t('checking'); await new Promise(r => setTimeout(r, 30));
+  const data = cleanSTL(buf, baseName() + '.stl', acc);
+  setChk('chkExport', acc);
+  save(data, baseName() + '.stl', 'model/stl');
+});
 $('exOBJ').onclick = busy($('exOBJ'), () => save(Core.exportOBJ(geo.V, geo.F, geo.c, Core.floors(params()), 1), baseName() + '.obj', 'text/plain'));
 let rhinoP = null;
 const RHINO = 'https://cdn.jsdelivr.net/npm/rhino3dm@8.4.0/';
@@ -2885,6 +3441,7 @@ function setLang(l) {
   applyStatic();
   updateInfo();
   updateSteps();
+  renderChks(); if (!$('fixSheet').classList.contains('hidden') && !FIX.out) fixSteps(0);
   if (PLAY.on) { update(false, true); return; }
   if (PR.plate) { showPlate(PR.plate).catch(e => console.error(e)); updateRead(); }
   else if (PR.preview) { showPreview(PR.preview); updateRead(); }
@@ -2900,7 +3457,8 @@ function updateRead() {
 $('segLang').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLang(b.dataset.v); });
 setMode(MODE, true);
 applyStatic();
-window.__app = { S, Core, SNAP, PR, FORM, formReady, params, piecesFor, printSetup, segPlan, get geo() { return geo; }, get base() { return baseMesh; }, loadBuffer, rebuild, unpackUnit, gunzip, STORE };
+window.__app = { S, Core, SNAP, PR, FORM, formReady, params, piecesFor, pieceByName, plateMesh, ensurePacked, printSetup, segPlan, get geo() { return geo; }, get base() { return baseMesh; }, loadBuffer, rebuild, unpackUnit, gunzip, STORE };
+renderChks();
 init();
 })();
 </script>
