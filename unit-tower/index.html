@@ -223,6 +223,9 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       </div>
       <div id="plateChips" class="chips hidden"></div>
       <button class="btn primary" id="btnPrint" style="width:100%;margin-top:8px" data-i18n="btnPrint"></button>
+      <div class="row" style="margin-top:18px"><label data-i18n="segTitle"></label></div>
+      <div class="read" id="readSeg" style="margin-top:2px"></div>
+      <button class="btn" id="btnSeg" style="width:100%;margin-top:8px" data-i18n="btnSeg"></button>
     </div>
 
     <div class="sec">
@@ -465,8 +468,13 @@ const Core = (() => {
   // two-sided thickening (total t, t/2 each side) of a unified mesh. Where the orientation cannot
   // agree ("twist" edges) the sheet is cut, and top/bottom of the two sides are stitched crosswise,
   // so the shell stays closed and continuous.
+  // planeZ: a z, or a list of z / { z, tol, boundary }. Offsets of vertices on such a plane slide along the wall
+  // onto the plane, so the rim there is flat. boundary: only open-edge vertices count (and they are set exactly on z).
   function shell(V, F0, t, planeZ) {
     const nv = V.length / 3;
+    const planes = (planeZ === undefined ? [] : [].concat(planeZ)).filter(p => p !== undefined && p !== null)
+      .map(p => typeof p === 'number' ? { z: p, tol: 1e-6 * (1 + Math.abs(p)) } : p);
+    const isB = new Uint8Array(nv);
     const u = unifyNormals(V, F0);
     const F = u.F, nf = F.length / 3;
     const { N, A } = faceNormals(V, F);
@@ -483,7 +491,7 @@ const Core = (() => {
         const f = l[0], g = l[3], a = l[1], b = F[f * 3 + (l[2] + 1) % 3];
         if (l[1] !== l[4]) { join(corner(f, a), corner(g, a)); join(corner(f, b), corner(g, b)); }
         else twist.push(f, g, a, b);
-      } else for (let i = 0; i < l.length; i += 3) open.push(l[i], l[i + 2]);
+      } else for (let i = 0; i < l.length; i += 3) { open.push(l[i], l[i + 2]); isB[l[i + 1]] = 1; isB[F[l[i] * 3 + (l[i + 2] + 1) % 3]] = 1; }
     }
     // copies related across twist edges, with parity (opposite sides)
     const Q = new Int32Array(nf * 3), R = new Uint8Array(nf * 3);
@@ -514,14 +522,17 @@ const Core = (() => {
       let nx = e[0], ny = e[1], nz = e[2];
       if (l < 1e-12) { nx = 0; ny = 0; nz = 1; l = 1; }
       let ox = nx * t / 2 / l, oy = ny * t / 2 / l, oz = nz * t / 2 / l;
-      if (planeZ !== undefined && Math.abs(V[v + 2] - planeZ) < 1e-6 * (1 + Math.abs(planeZ))) {
+      let bz = V[v + 2], hit = null;
+      for (const p of planes) if (Math.abs(bz - p.z) < p.tol && (!p.boundary || isB[e[3]])) { hit = p; break; }
+      if (hit) {
+        if (hit.boundary) bz = hit.z;
         // move the offset point along the wall (within its tangent plane) until it lies on the cut plane
         const ux = nx / l, uy = ny / l, uz = nz / l, gz = 1 - uz * uz;
         if (gz > 0.15) { const k = oz / gz; ox += k * ux * uz; oy += k * uy * uz; oz = 0; }
         else { const hl = Math.hypot(ux, uy) || 1; ox = ux / hl * t / 2; oy = uy / hl * t / 2; oz = 0; }
       }
       const i = outV.length / 3;
-      outV.push(V[v] + ox, V[v + 1] + oy, V[v + 2] + oz, V[v] - ox, V[v + 1] - oy, V[v + 2] - oz);
+      outV.push(V[v] + ox, V[v + 1] + oy, bz + oz, V[v] - ox, V[v + 1] - oy, bz - oz);
       idx.set(root, i);
     }
     const top = c => { const [root, par] = findQ(find(c)); return idx.get(root) + par; };
@@ -832,11 +843,58 @@ const Core = (() => {
     return { V, F, placed: false };
   }
 
-  // one floor -> two printable halves in mm, flat side down, centred on the origin
-  // halves: result of cutZ on the unit surface (file units); k = mm per file unit
-  function printPieces(halves, c, s, k, wallMM, floorNo, labels, labelMM) {
-    const res = {};
-    for (const [key, part, flip, tag] of [['upper', halves.hi, true, '-1'], ['lower', halves.lo, false, '-2']]) {
+  // ---- snap-off number tag beside a piece (when there is no flat spot for a raised label) ----
+  const TAG = { H: 3.2, pad: 1, gap: 1.5, link: 0.8, plateZ: 0.6, textZ: 1.2, linkZ: 0.4 };
+  function tagSize(text) { const H = TAG.H, g = glyphRects(text, H * 0.6, H, Math.max(0.6, H * 0.16), H * 0.2); return { g, w: g.width + 2 * TAG.pad, h: H + 2 * TAG.pad }; }
+  // X, Y: mid-surface of the piece in its own frame (mm); isBed[i]: vertex i lies on the plate.
+  // The tag goes on the side where the plate-level outline reaches closest to the piece's edge.
+  function tagPlan(X, Y, isBed, text, wall) {
+    const n = X.length; let any = false;
+    for (let i = 0; i < n; i++) if (isBed[i]) { any = true; break; }
+    let best = null;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      let ext = -Infinity, e = -Infinity, ai = 0;
+      for (let i = 0; i < n; i++) { const q = X[i] * dx + Y[i] * dy; if (q > ext) ext = q; if ((!any || isBed[i]) && q > e) { e = q; ai = i; } }
+      if (!best || ext - e < best.gapL - 1e-9) best = { dx, dy, ext, ai, gapL: ext - e };
+    }
+    const { g, w, h } = tagSize(text), ax = X[best.ai], ay = Y[best.ai], st = best.ext + wall / 2 + TAG.gap, lw = TAG.link / 2;
+    let rect, link;
+    if (best.dx > 0) { rect = [st, ay - h / 2, st + w, ay + h / 2]; link = [ax, ay - lw, st + 0.3, ay + lw]; }
+    else if (best.dx < 0) { rect = [-st - w, ay - h / 2, -st, ay + h / 2]; link = [-st - 0.3, ay - lw, ax, ay + lw]; }
+    else if (best.dy > 0) { rect = [ax - w / 2, st, ax + w / 2, st + h]; link = [ax - lw, ay, ax + lw, st + 0.3]; }
+    else { rect = [ax - w / 2, -st - h, ax + w / 2, -st]; link = [ax - lw, -st - 0.3, ax + lw, ay]; }
+    return { rect, link, g };
+  }
+  // which z of a cut half lies on the plate: the cut face, or the unit's own top / bottom
+  function bedPlane(halves, key, cutDown) {
+    const bb = bbox((key === 'upper' ? halves.hi : halves.lo).V);
+    return { z: cutDown ? halves.zc : key === 'upper' ? bb.max[2] : bb.min[2], tol: Math.max(bb.size[2] * 2e-3, 1e-9) };
+  }
+  // plate contact and overhang of a piece lying on z = 0 (mm): faces facing down, on the plate / steeper than 45 deg
+  function printability(V, F) {
+    let bed = 0, over = 0, area = 0;
+    for (let t = 0; t < F.length; t += 3) {
+      const a = F[t] * 3, b = F[t + 1] * 3, c = F[t + 2] * 3;
+      const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2], wx = V[c] - V[a], wy = V[c + 1] - V[a + 1], wz = V[c + 2] - V[a + 2];
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx, l = Math.hypot(nx, ny, nz);
+      if (!l) continue;
+      area += l / 2;
+      if (nz / l > -0.7071) continue;
+      if (Math.max(V[a + 2], V[b + 2], V[c + 2]) < 0.05) bed += l / 2; else over += l / 2;
+    }
+    return { bed, over, area };
+  }
+
+  // one floor -> two printable halves in mm, lying on z = 0, centred on the origin
+  // halves: result of cutZ on the unit surface (file units); k = mm per file unit; s: scale, or scale at height z
+  // opt.flat { z0, z1, tol }: joining unit, its top / bottom rims are pressed flat onto the unit planes
+  // opt.cutDown { upper, lower }: print that half with the cut face on the plate (else the unit's top / bottom)
+  // opt.tag { upper, lower }: put the floor number on a snap-off tag instead of on the piece
+  function printPieces(halves, c, s, k, wallMM, floorNo, labels, labelMM, opt = {}) {
+    const res = {}, flat = opt.flat || null;
+    for (const [key, part, isUpper, tag] of [['upper', halves.hi, true, '-1'], ['lower', halves.lo, false, '-2']]) {
+      if (opt.only && opt.only !== key) continue;
+      const cutDown = !!(opt.cutDown && opt.cutDown[key]), flip = isUpper !== cutDown;
       const V = part.V, n = V.length / 3;
       const Vs = new Float64Array(V.length), sf = typeof s === 'function' ? s : () => s;   // s: one scale, or scale at height z (continuous waist)
       for (let i = 0; i < n; i++) {
@@ -845,36 +903,74 @@ const Core = (() => {
         Vs[i * 3 + 1] = c[1] + (V[i * 3 + 1] - c[1]) * sc;
         Vs[i * 3 + 2] = V[i * 3 + 2];
       }
-      const sh = shell(Vs, part.F, wallMM / k, halves.zc);
-      // nothing may cross the cut plane: near-horizontal surface just below/above the cut gets
-      // pushed past it by the offset and would hold the two halves apart, so clamp it flat
-      if (halves.zc !== undefined) for (let i = 2; i < sh.V.length; i += 3)
-        sh.V[i] = flip ? Math.max(sh.V[i], halves.zc) : Math.min(sh.V[i], halves.zc);
+      const zEnd = flat ? (isUpper ? flat.z1 : flat.z0) : undefined;
+      const sh = shell(Vs, part.F, wallMM / k, [halves.zc, flat ? { z: zEnd, tol: flat.tol, boundary: true } : undefined]);
+      // nothing may cross the cut plane (or, for joining units, the unit's own top / bottom): near-horizontal
+      // surface next to it gets pushed past it by the offset and would hold the pieces apart, so clamp it flat
+      if (halves.zc !== undefined) for (let i = 2; i < sh.V.length; i += 3) {
+        let z = isUpper ? Math.max(sh.V[i], halves.zc) : Math.min(sh.V[i], halves.zc);
+        if (flat) z = isUpper ? Math.min(z, zEnd) : Math.max(z, zEnd);
+        sh.V[i] = z;
+      }
+      const sg = flip ? -1 : 1;
+      const X = new Float64Array(n), Y = new Float64Array(n);
       let sx0 = Infinity, sx1 = -Infinity, sy0 = Infinity, sy1 = -Infinity;
-      for (let i = 0; i < Vs.length; i += 3) {
-        const x = (Vs[i] - c[0]) * k, y = (Vs[i + 1] - c[1]) * k * (flip ? -1 : 1);
+      for (let i = 0; i < n; i++) {
+        const x = (Vs[i * 3] - c[0]) * k, y = (Vs[i * 3 + 1] - c[1]) * k * sg;
+        X[i] = x; Y[i] = y;
         if (x < sx0) sx0 = x; if (x > sx1) sx1 = x; if (y < sy0) sy0 = y; if (y > sy1) sy1 = y;
       }
       const W = new Float64Array(sh.V.length);
       for (let i = 0; i < sh.V.length; i += 3) {
-        const x = (sh.V[i] - c[0]) * k, y = (sh.V[i + 1] - c[1]) * k, z = sh.V[i + 2] * k;
-        W[i] = x; W[i + 1] = flip ? -y : y; W[i + 2] = flip ? -z : z;
+        W[i] = (sh.V[i] - c[0]) * k; W[i + 1] = (sh.V[i + 1] - c[1]) * k * sg; W[i + 2] = sh.V[i + 2] * k * sg;
       }
       const bb = bbox(W);
       const ox = (sx0 + sx1) / 2, oy = (sy0 + sy1) / 2;
       for (let i = 0; i < W.length; i += 3) { W[i] -= ox; W[i + 1] -= oy; W[i + 2] -= bb.min[2]; }
       let out = { V: W, F: sh.F, placed: false };
-      if (labels) out = addLabel(W, sh.F, floorNo + tag, wallMM, labelMM);
+      const useTag = !!(opt.tag && opt.tag[key]);
+      if (labels && !useTag) out = addLabel(W, sh.F, floorNo + tag, wallMM, labelMM);
+      if (labels && useTag) {
+        const bp = bedPlane(halves, key, cutDown), isBed = new Uint8Array(n);
+        for (let i = 0; i < n; i++) isBed[i] = Math.abs(V[i * 3 + 2] - bp.z) < bp.tol ? 1 : 0;
+        const pl = tagPlan(X, Y, isBed, floorNo + tag, wallMM), Vn = Array.from(W), Fn = Array.from(sh.F);
+        const [rx0, ry0, rx1, ry1] = pl.rect, [lx0, ly0, lx1, ly1] = pl.link;
+        boxTris(rx0 - ox, ry0 - oy, 0, rx1 - ox, ry1 - oy, TAG.plateZ, Vn, Fn);
+        boxTris(lx0 - ox, ly0 - oy, 0, lx1 - ox, ly1 - oy, TAG.linkZ, Vn, Fn);
+        for (const [u0, v0, u1, v1] of pl.g.R) boxTris(rx0 - ox + TAG.pad + u0, ry0 - oy + TAG.pad + v0, TAG.plateZ - 0.1, rx0 - ox + TAG.pad + u1, ry0 - oy + TAG.pad + v1, TAG.textZ, Vn, Fn);
+        out = { V: new Float64Array(Vn), F: new Uint32Array(Fn), placed: true, tagged: true, body: { V: W, F: sh.F } };
+      }
       out.name = floorNo + tag;
       out.size = bbox(out.V).size;
+      out.flip = flip; out.cutDown = cutDown;
       res[key] = out;
     }
     return res;
   }
 
+  // one floor of a joining tower as a print-scale solid in the tower's own frame (mm, pivot on the z axis):
+  // scale (per height for a continuous waist) -> constant print wall -> flat rims -> twist -> lift.
+  // lapLo / lapHi (mm): let the flat rims reach a hair into the neighbouring floor so the slicer fuses them
+  function segmentFloor(V, F, c, f, k, wallMM, flat, zBase, lapLo, lapHi) {
+    const n = V.length / 3, Vs = new Float64Array(V.length);
+    for (let i = 0; i < n; i++) {
+      const sc = scaleAt(f, V[i * 3 + 2]);
+      Vs[i * 3] = c[0] + (V[i * 3] - c[0]) * sc; Vs[i * 3 + 1] = c[1] + (V[i * 3 + 1] - c[1]) * sc; Vs[i * 3 + 2] = V[i * 3 + 2];
+    }
+    const sh = shell(Vs, F, wallMM / k, [{ z: flat.z0, tol: flat.tol, boundary: true }, { z: flat.z1, tol: flat.tol, boundary: true }]);
+    const cs = Math.cos(f.th), sn = Math.sin(f.th), W = new Float64Array(sh.V.length);
+    for (let i = 0; i < W.length; i += 3) {
+      const dx = sh.V[i] - c[0], dy = sh.V[i + 1] - c[1], z = Math.min(flat.z1, Math.max(flat.z0, sh.V[i + 2]));
+      W[i] = (cs * dx - sn * dy) * k; W[i + 1] = (sn * dx + cs * dy) * k;
+      W[i + 2] = (z - flat.z0 + f.z - zBase) * k + (z <= flat.z0 ? -lapLo : z >= flat.z1 ? lapHi : 0);
+    }
+    return { V: W, F: sh.F };
+  }
+
   // ---------------- plate packing ----------------
   // plan footprint of a cut half in the piece's own frame (mm), as integer 1 mm cells, dilated by dil
-  function footprintMask(part, c, s, k, flip, dil) {
+  // tag { text, bed: { z, tol }, wall }: add the snap-off number tag (same plan as printPieces)
+  function footprintMask(part, c, s, k, flip, dil, tag) {
     const V = part.V, F = part.F, n = V.length / 3;
     const X = new Float64Array(n), Y = new Float64Array(n);
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -885,6 +981,14 @@ const Core = (() => {
       X[i] = x; Y[i] = y; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
     }
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;   // same centring as printPieces
+    let extra = [];
+    if (tag) {
+      const isBed = new Uint8Array(n);
+      for (let i = 0; i < n; i++) isBed[i] = Math.abs(V[i * 3 + 2] - tag.bed.z) < tag.bed.tol ? 1 : 0;
+      const pl = tagPlan(X, Y, isBed, tag.text, tag.wall);
+      extra = [pl.rect, pl.link];
+      for (const r of extra) { x0 = Math.min(x0, r[0]); y0 = Math.min(y0, r[1]); x1 = Math.max(x1, r[2]); y1 = Math.max(y1, r[3]); }
+    }
     const d = Math.ceil(dil);
     const oi = Math.floor(x0 - cx) - d - 1, oj = Math.floor(y0 - cy) - d - 1;
     const W = Math.ceil(x1 - cx) - oi + d + 2, H = Math.ceil(y1 - cy) - oj + d + 2;
@@ -907,6 +1011,9 @@ const Core = (() => {
         if (hit) g[j * W + i] = 1;
       }
     }
+    for (const r of extra)
+      for (let j = Math.max(0, Math.floor(r[1] - cy - oj)); j <= Math.min(H - 1, Math.floor(r[3] - cy - oj)); j++)
+        for (let i = Math.max(0, Math.floor(r[0] - cx - oi)); i <= Math.min(W - 1, Math.floor(r[2] - cx - oi)); i++) g[j * W + i] = 1;
     const out = new Uint8Array(W * H);
     const disk = [];
     for (let v = -d; v <= d; v++) for (let u = -d; u <= d; u++) if (u * u + v * v <= dil * dil + 0.5) disk.push(u, v);
@@ -936,7 +1043,7 @@ const Core = (() => {
   }
   // first-fit decreasing over all plates; items: [{name, masks:[{deg, m}]}]; returns [[{name, deg, dx, dy}]]
   function packPlates(items, plate, margin, gap, step = 2) {
-    const P = plate, edge = Math.max(0, Math.round(margin - gap / 2));
+    const P = plate, edge = Math.max(0, Math.round(margin - gap / 2) + 2);   // + 2: the rims and the 1 mm raster can reach that far past the mask
     const plates = [];
     const newPlate = () => {
       const occ = new Uint8Array(P * P);
@@ -1047,7 +1154,7 @@ const Core = (() => {
     return t.join('\n');
   }
 
-  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, envScale, floors, scaleAt, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, addLabel, glyphRects, zipEntry, zipBlobParts, crc32, assemblySVG, footprintMask, rotMask, packPlates, placeOnPlate };
+  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, envScale, floors, scaleAt, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, printability, bedPlane, segmentFloor, addLabel, glyphRects, zipEntry, zipBlobParts, crc32, assemblySVG, footprintMask, rotMask, packPlates, placeOnPlate };
 })();
 if (typeof module !== 'undefined') module.exports = Core;
 // ===================== CORE-END =====================
@@ -1087,13 +1194,17 @@ const I18N = {
     waist: '最细处 {m} · 比例 {r}', twistRead: '顶层累计 {d}° · 约 {t} 圈',
     stlBig: 'STL 约 {mb} MB，面数较多，导出可能较慢。', stlKB: 'STL 约 {kb} KB。', stlMB: 'STL 约 {mb} MB。',
     hud: '{n} 层 · 总高 {H} m · 扭转 {d}°',
-    printClosed: '分件需要开放面单体（闭合实体暂不支持切半）', print1: '每层切成上下两半（单体中线），上半翻面打印',
+    printClosed: '分件需要开放面单体（闭合实体暂不支持切半）', print1: '每层切成上下两半（单体中线），自动选朝下的面',
+    upEnd: '已翻面，顶面朝下', upCut: '切面朝下', loEnd: '底面朝下', loCut: '已翻面，切面朝下', tagNote: ' · 层号在旁边的小号牌上', progSetup: '比较朝向…',
+    segTitle: '整段打印', btnSeg: '导出整段 STL', segRead: '{n} 段 · 每段 {f} 层 · 高 {h} mm', segRead1: '整塔 1 件 · {f} 层 · 高 {h} mm', segNote: '立着打印，层与层已经连在一起；曲面下方悬空的地方要在切片软件里开支撑。',
+    segOnlyConn: '只用于衔接型单体（上下层的边能对上）。', segGap: '净高为 0 时才能整段打印。', segTall: '一层就超过 250 mm 高，请换小一点的比例。', segProg: '段 {s}/{n} · 层 {i}/{m}', segDone: '已导出 {n} 段', segFile: '段', segFloors: '{a}-{b}层', segWord: '整段',
+    segN1: '单体塔楼 · 整段打印', segN2: '共 {n} 段，都按塔里的方向导出：从下往上按段号粘合，段与段之间不用再转角度。',
     print2: '单片 {a}–{b} mm 见方 · 高约 {h} mm', pieces: '{n} 片', platesDone: '{n} 盘（按轮廓排好）', platesTodo: '盘数点“排盘预览”计算',
     sclMin: '能放进 A1 的最小比例 1:{d}', sclNone: '1:1000 也放不进 A1', tooBig2: '最大单片 {a} mm，放不进 A1（可用约 {mm} mm）；排盘和导出已停用', fitScale: '改成 1:{d}', tooSmall: '单片只有 {mm} mm：层号放不下，细节可能打不出来',
     wallReal: '壁厚相当于真实 {w} m', tooBig: '最大单片超过 {mm} mm，放不进 A1，请换小一点的比例',
     progOutline: '轮廓 {i}/{n}', progPack: '排盘…', generating: '生成中…',
     hudPlate: '盘 {n} / {N} · {list}', noLabel: ' · {list} 层号放不下',
-    hudPieces: '第 {n} 层分件 · 左 {n}-1 上半（已翻面）· 右 {n}-2 下半 · 单位 mm', noLabelShort: ' · 层号放不下',
+    hudPieces: '第 {n} 层分件 · 左 {n}-1 上半（{a}）· 右 {n}-2 下半（{b}）· 单位 mm', noLabelShort: ' · 层号放不下',
     notStl: '没读到三角面，请确认是 STL 文件', loaded: '已载入 {name} · 单位 {u}', loadedGap0: ' · 单体为整层高，净高设为 0', loadedEnd: '，可在左侧修改',
     sampleNeedsWeb: '示例单体需要在网页上打开，已载入示例楼板',
     packFail: '排盘失败：', prevFail: '预览失败：', exportFail: '导出失败：', noFit: '{name} 放不进打印盘',
@@ -1101,11 +1212,12 @@ const I18N = {
     rhinoLoad: '正在加载 Rhino 库…', rhinoFail: '无法加载 rhino3dm（需要联网）', noWebgl: '浏览器不支持 WebGL2，无法预览（导出仍可用）',
     sampleSlab: '示例楼板', sampleUnit: '示例单体', loadingUnit: '加载单体中…', forget: '清除记住的模型', forgotten: '已清除，下次打开显示示例单体', restored: '已恢复上次导入的 {name}',
     folder: '打印件', fPlates: '按盘', fPieces: '单片', plateFile: '盘', guideFile: '组装图.svg', notesFile: '说明.txt', sep: '、',
-    gTitle: '{t} · 组装图', gLine1: '1:{s} · 打印壁厚 {w} mm · 每层两片：N-1 上半（翻面打印，组装时翻回）、N-2 下半 · 从下往上按层号粘合',
+    gTitle: '{t} · 组装图', gLine1: '1:{s} · 打印壁厚 {w} mm · 每层两片：N-1 上半、N-2 下半（哪一面朝下打印见说明）· 从下往上按层号粘合',
     gLine2: '角度为相对第 1 层逆时针旋转（俯视），橙线为第 1 层的十字臂方向', gPlate: '盘 {p}', gPair: '{n}-1 上 · {n}-2 下',
     gPlates: '打印盘分配（A1 · 256 × 256 mm）', gPlateLine: '盘 {i}：{list}',
     n1: '单体塔楼 · 打印分件', n2: '比例 1:{s} · 打印壁厚 {w} mm（相当于真实 {r} m）· 单位 mm',
-    n3: '每层切成上下两半：N-1 = 上半（已翻面，平面朝下打印，组装时翻回），N-2 = 下半', n4: '层号凸字在臂内槽底，组装后被盖住',
+    n3: '每层切成上下两半：N-1 = 上半（{a}），N-2 = 下半（{b}）。写着「已翻面」的，组装时翻回来。', n4: '层号凸字在零件内侧，组装后被盖住',
+    n4tag: '层号在零件旁边的小号牌上，用一根细条连着；组装前把号牌掰掉。', n4mix: '层号：能压在零件上的压在内侧；放不下的做成旁边的小号牌，用细条连着，组装前掰掉。',
     n5: '扭转：每层相对下一层 {d}°（逆时针，俯视），见 {g}', n6: '{f}/：每盘一个 STL，零件已排好（盘边 {m} mm，间距 {gp} mm，A1 256 × 256 mm）。',
     n7: '在 Bambu Studio 里每个文件导入一个盘；需要单独调整时右键“拆分为对象”。', n8: '{f}/：每片单独的 STL，文件名即层号。',
     n9: '打印盘分配：', n10: '以下零件放不下层号：{list}',
@@ -1138,13 +1250,17 @@ const I18N = {
     waist: 'Narrowest at {m} · scale {r}', twistRead: 'Top floor {d}° · about {t} turns',
     stlBig: 'STL about {mb} MB — many triangles, export may be slow.', stlKB: 'STL about {kb} KB.', stlMB: 'STL about {mb} MB.',
     hud: '{n} floors · height {H} m · twist {d}°',
-    printClosed: 'Print parts need an open-surface unit (closed solids cannot be cut in half yet)', print1: 'Each floor is cut in half at mid-height; the upper half prints flipped',
+    printClosed: 'Print parts need an open-surface unit (closed solids cannot be cut in half yet)', print1: 'Each floor is cut in half at mid-height; the face that goes down is chosen automatically',
+    upEnd: 'flipped, top face down', upCut: 'cut face down', loEnd: 'bottom face down', loCut: 'flipped, cut face down', tagNote: ' · floor number on the tag beside it', progSetup: 'Comparing orientations…',
+    segTitle: 'Print in segments', btnSeg: 'Export segment STL', segRead: '{n} segments · {f} floors each · {h} mm tall', segRead1: 'Whole tower in 1 piece · {f} floors · {h} mm tall', segNote: 'Printed upright, floors already joined; turn on supports in the slicer for the overhanging undersides.',
+    segOnlyConn: 'Only for joining units (floors that meet edge to edge).', segGap: 'Needs clear height 0.', segTall: 'One floor is already taller than 250 mm — choose a smaller scale.', segProg: 'Segment {s}/{n} · floor {i}/{m}', segDone: 'Exported {n} segment(s)', segFile: 'segment', segFloors: 'floors{a}-{b}', segWord: 'segments',
+    segN1: 'Unit Tower · segments', segN2: '{n} segments, all exported in the tower\'s own orientation: glue bottom-up by number, no turning between segments.',
     print2: 'Pieces {a}–{b} mm across · about {h} mm tall', pieces: '{n} pieces', platesDone: '{n} plates (packed by outline)', platesTodo: 'click “Preview plates” for the plate count',
     sclMin: 'Smallest scale that fits the A1: 1:{d}', sclNone: 'Does not fit the A1 even at 1:1000', tooBig2: 'The largest piece is {a} mm and does not fit the A1 (about {mm} mm usable) — plates and export are off', fitScale: 'Change to 1:{d}', tooSmall: 'Pieces are only {mm} mm: no room for floor labels, fine detail may not print',
     wallReal: 'wall ≈ {w} m real', tooBig: 'The largest piece is over {mm} mm and does not fit the A1 — choose a smaller scale',
     progOutline: 'Outline {i}/{n}', progPack: 'Packing…', generating: 'Generating…',
     hudPlate: 'Plate {n} / {N} · {list}', noLabel: ' · no room for label: {list}',
-    hudPieces: 'Floor {n} parts · left {n}-1 upper half (flipped) · right {n}-2 lower half · mm', noLabelShort: ' · no room for label',
+    hudPieces: 'Floor {n} parts · left {n}-1 upper half ({a}) · right {n}-2 lower half ({b}) · mm', noLabelShort: ' · no room for label',
     notStl: 'No triangles found — is this an STL file?', loaded: 'Loaded {name} · units {u}', loadedGap0: ' · full-storey unit, clear height set to 0', loadedEnd: ' (change on the left)',
     sampleNeedsWeb: 'The sample unit needs the web page; loaded the sample slab instead',
     packFail: 'Packing failed: ', prevFail: 'Preview failed: ', exportFail: 'Export failed: ', noFit: '{name} does not fit on a plate',
@@ -1152,11 +1268,12 @@ const I18N = {
     rhinoLoad: 'Loading the Rhino library…', rhinoFail: 'Could not load rhino3dm (needs internet)', noWebgl: 'This browser has no WebGL2 — no preview (export still works)',
     sampleSlab: 'Sample slab', sampleUnit: 'Sample unit', loadingUnit: 'Loading unit…', forget: 'Forget saved model', forgotten: 'Cleared — the sample unit will open next time', restored: 'Restored your last model {name}',
     folder: 'print-parts', fPlates: 'plates', fPieces: 'pieces', plateFile: 'plate', guideFile: 'assembly.svg', notesFile: 'readme.txt', sep: ', ',
-    gTitle: '{t} · assembly', gLine1: '1:{s} · print wall {w} mm · two pieces per floor: N-1 upper half (printed flipped, turn it back), N-2 lower half · glue bottom-up by floor number',
+    gTitle: '{t} · assembly', gLine1: '1:{s} · print wall {w} mm · two pieces per floor: N-1 upper half, N-2 lower half (see the notes for which face prints down) · glue bottom-up by floor number',
     gLine2: 'Angles are anticlockwise from floor 1 (plan view); orange lines show the arm directions of floor 1', gPlate: 'plate {p}', gPair: '{n}-1 upper · {n}-2 lower',
     gPlates: 'Plates (A1 · 256 × 256 mm)', gPlateLine: 'Plate {i}: {list}',
     n1: 'Unit Tower · print parts', n2: 'Scale 1:{s} · print wall {w} mm (≈ {r} m real) · units mm',
-    n3: 'Each floor is cut in half: N-1 = upper half (flipped, flat side down; turn it back when assembling), N-2 = lower half', n4: 'Raised floor labels sit on the trough floor inside an arm and are hidden once assembled',
+    n3: 'Each floor is cut in half: N-1 = upper half ({a}), N-2 = lower half ({b}). Turn the flipped ones back when assembling.', n4: 'Raised floor labels sit on the inside of the piece and are hidden once assembled',
+    n4tag: 'The floor number is on a small tag beside each piece, held by a thin link; snap the tag off before assembling.', n4mix: 'Floor numbers: raised on the inside where there is room; otherwise on a small tag beside the piece, held by a thin link — snap it off before assembling.',
     n5: 'Twist: {d}° per floor relative to the one below (anticlockwise, plan view), see {g}', n6: '{f}/: one STL per plate, pieces already placed (margin {m} mm, spacing {gp} mm, A1 256 × 256 mm).',
     n7: 'In Bambu Studio import one file per plate; right-click “Split to objects” to adjust single pieces.', n8: '{f}/: one STL per piece, named by floor label.',
     n9: 'Plates:', n10: 'No room for a label on: {list}',
@@ -1216,11 +1333,19 @@ function rebuild() {
   else c = vc.c && Math.abs(vc.vol) > 1e-12 ? vc.c : Core.areaCentroid(V, F).c;
   geo = { V, F, side, bb, c, es, thick, h: bb.size[2] };
   computeSnaps();
+  // 衔接型单体：顶、底边压平到单体的顶 / 底平面（和打印件一致），层距 = 单体高度，上下层正好相接
+  if (thick && SNAP.kind === 'conn') {
+    const b0 = Core.bbox(baseMesh.V), tol = b0.size[2] * 1e-3, flat = { z0: b0.min[2], z1: b0.max[2], tol };
+    const r = Core.shell(baseMesh.V, baseMesh.F, S.thick / S.unit, [{ z: flat.z0, tol, boundary: true }, { z: flat.z1, tol, boundary: true }]);
+    for (let i = 2; i < r.V.length; i += 3) r.V[i] = Math.min(flat.z1, Math.max(flat.z0, r.V[i]));
+    const b1 = Core.bbox(r.V);
+    Object.assign(geo, { V: r.V, F: r.F, side: r.side, bb: b1, h: b1.size[2], flat });
+  }
   if (S.scaleAuto) S.scale = SNAP.kind === 'conn' ? 'cont' : 'step';
   syncSeg('segScale', 'scale');
   halves = null;
   PR.preview = 0;
-  packCache = null;
+  packCache = null; setupCache = null; pieceCache.clear();
   uploadMesh();
   updateInfo();
   update(true);
@@ -1430,19 +1555,36 @@ function plan(fl) {
   }
   if (cur.length) plates.push(cur);
   const sizes = fl.map(f => size(f.s));
-  const halfH = (bb0.size[2] / 2) * k + PR.wall;
+  const halfH = (bb0.size[2] / 2) * k + (geo.flat ? 0 : PR.wall / 2);   // joining units are pressed flat; others gain half a wall
   // room on the plate as the packer sees it: the plate margin on each side, and half a gap round each piece
   const room = PLATE - 2 * Math.max(MARGIN, PR.margin) - PR.gap, sMax = Math.max(...fl.map(f => f.s));
   const span = Math.max(bb0.size[0], bb0.size[1]) * sMax * S.unit * 1000;            // widest floor, real mm
   const minDen = room > PR.wall ? Math.min(1001, Math.ceil(span / (room - PR.wall))) : 1001;
   return { plates, maxD: Math.max(...sizes), minD: Math.min(...sizes), halfH, minDen, room, fits: Math.max(...sizes) <= room };
 }
+// 整段打印：衔接型的塔按打印比例、打印壁厚导出成立着打印的整段，每段不超过 SEG_MAX mm 高
+const SEG_MAX = 250;
+function segPlan() {
+  if (!geo || !geo.flat || geo.es.closed || !geo.thick) return { ok: false, why: 'segOnlyConn' };
+  if (S.gap > 0) return { ok: false, why: 'segGap' };
+  const hmm = geo.h * printFactor();
+  if (hmm > SEG_MAX) return { ok: false, why: 'segTall' };
+  const n = Math.ceil(S.count / Math.floor(SEG_MAX / hmm)), per = Math.ceil(S.count / n);
+  return { ok: true, n, per, hmm };
+}
+function updateSeg(fits) {
+  const sp = segPlan();
+  $('btnSeg').disabled = !sp.ok || !fits;
+  $('readSeg').innerHTML = !sp.ok ? t(sp.why)
+    : t(sp.n === 1 ? 'segRead1' : 'segRead', { n: sp.n, f: sp.per, h: fmt(sp.hmm * sp.per, 0) }) + '<br>' + t('segNote');
+}
 function updatePrint(fl) {
   const ok = !geo.es.closed && geo.thick;
   $('btnPrev').disabled = $('btnPrint').disabled = $('btnPlates').disabled = !ok;
   syncScale();
-  if (!ok) { $('readPrint').innerHTML = `<span class="warn">${t('printClosed')}</span>`; return; }
+  if (!ok) { $('readPrint').innerHTML = `<span class="warn">${t('printClosed')}</span>`; updateSeg(false); return; }
   const pl = plan(fl);
+  updateSeg(pl.fits);
   // 放不下：排盘和导出变灰（排盘视图里「返回塔楼」照常能点），并给一键改到刚好放得下的比例
   if (!pl.fits) { $('btnPrint').disabled = true; if (!PR.plate) $('btnPlates').disabled = true; }
   $('sclHint').innerHTML = pl.minDen <= 1000 ? t('sclMin', { d: pl.minDen }) : t('sclNone');
@@ -1458,18 +1600,48 @@ function updatePrint(fl) {
   $('nPrev').max = S.count;
 }
 function packKey() {
-  return JSON.stringify([fileName, S.unit, S.upY, S.count, S.minR, S.curve, S.thick, PR.den, PR.wall, PR.margin, PR.gap, S.scale, S.scale === 'cont' ? S.gap : 0]);
+  return JSON.stringify([fileName, S.unit, S.upY, S.count, S.minR, S.curve, S.thick, PR.den, PR.wall, PR.margin, PR.gap, S.scale, S.scale === 'cont' ? S.gap : 0, S.pivot, PR.labels, SNAP.kind]);
 }
+// 每种半片（上半 / 下半）定一次：哪一面朝下（比较两种朝向的悬空和贴盘面积），层号压在零件上还是做成旁边的小号牌
+let setupCache = null;
+function printSetup() {
+  const key = packKey();
+  if (setupCache && setupCache.key === key) return setupCache;
+  const fl = Core.floors(params()), hv = getHalves(), k = printFactor(), flat = geo.flat || null;
+  let iMax = 0, iMin = 0;
+  fl.forEach((f, i) => { if (f.s > fl[iMax].s) iMax = i; if (f.lo < fl[iMin].lo) iMin = i; });
+  const mk = (i, cutDown, tag) => Core.printPieces(hv, geo.c, floorScale(fl[i]), k, PR.wall, i + 1, PR.labels, 5, { flat, cutDown, tag });
+  const A = mk(iMax, { upper: false, lower: false }), B = mk(iMax, { upper: true, lower: true });
+  const cutDown = {}, tag = {}, stat = {};
+  for (const h of ['upper', 'lower']) {
+    const a = Core.printability(A[h].V, A[h].F), b = Core.printability(B[h].V, B[h].F), eps = 0.01 * a.area;
+    // 切面朝下要明显更好才换：悬空少两成以上；或悬空差不多而贴盘面积大一半以上
+    cutDown[h] = b.over < 0.8 * a.over - eps || (b.over <= 1.1 * a.over + eps && b.bed > 1.5 * a.bed + eps);
+    stat[h] = { a, b };
+  }
+  if (PR.labels) {
+    const C = iMin === iMax ? null : mk(iMin, cutDown);
+    for (const h of ['upper', 'lower']) tag[h] = !((cutDown[h] ? B : A)[h].placed && (!C || C[h].placed));
+  }
+  return setupCache = { key, cutDown, tag, flat, stat };
+}
+const pieceOpt = () => { const su = printSetup(); return { flat: su.flat, cutDown: su.cutDown, tag: su.tag }; };
+const faceText = (h, su) => t(h === 'upper' ? (su.cutDown.upper ? 'upCut' : 'upEnd') : (su.cutDown.lower ? 'loCut' : 'loEnd'));
 async function ensurePacked(progress) {
   const key = packKey();
   if (packCache && packCache.key === key) return packCache;
-  const fl = Core.floors(params()), hv = getHalves(), k = printFactor(), dil = PR.wall + PR.gap / 2;   // the flattened cut can reach up to ~1 wall sideways
+  const fl = Core.floors(params()), hv = getHalves(), k = printFactor(), dil = PR.wall + PR.gap / 2 + 1;   // the flattened rims reach up to ~1.3 wall sideways, and the 1 mm raster loses up to a cell
+  if (progress) progress(t('progSetup'));
+  await new Promise(r => setTimeout(r, 20));
+  const su = printSetup();
   const items = [];
   for (let i = 0; i < fl.length; i++) {
     if (progress) progress(t('progOutline', { i: i + 1, n: fl.length }));
     await new Promise(r => setTimeout(r, 0));
-    for (const [part, flip, tag] of [[hv.hi, true, '-1'], [hv.lo, false, '-2']]) {
-      const m0 = Core.footprintMask(part, geo.c, floorScale(fl[i]), k, flip, dil);
+    for (const [h, part, tag] of [['upper', hv.hi, '-1'], ['lower', hv.lo, '-2']]) {
+      const flip = (h === 'upper') !== su.cutDown[h];
+      const tg = PR.labels && su.tag[h] ? { text: (i + 1) + tag, bed: Core.bedPlane(hv, h, su.cutDown[h]), wall: PR.wall } : null;
+      const m0 = Core.footprintMask(part, geo.c, floorScale(fl[i]), k, flip, dil, tg);
       items.push({ name: (i + 1) + tag, masks: [{ deg: 0, m: m0 }, { deg: 45, m: Core.rotMask(m0, 45) }] });
     }
   }
@@ -1532,7 +1704,7 @@ async function showPlate(n) {
 // 一层的缩放：逐层是一个数；连续是随单体高度 z 变化的函数
 const floorScale = f => f.env ? z => Core.scaleAt(f, z) : f.s;
 function piecesFor(i, fl) {
-  return Core.printPieces(getHalves(), geo.c, floorScale(fl[i]), printFactor(), PR.wall, i + 1, PR.labels, 5);
+  return Core.printPieces(getHalves(), geo.c, floorScale(fl[i]), printFactor(), PR.wall, i + 1, PR.labels, 5, pieceOpt());
 }
 function showPreview(n) {
   const fl = Core.floors(params());
@@ -1551,7 +1723,7 @@ function showPreview(n) {
   R.setPlate(null);
   applyVis(0, false);
   R.upload(g); R.setFloors([{ i: 0, s: 1, th: 0, z: 0 }], g, { pitch: 0 }); R.fit(); R.draw();
-  $('hudA').textContent = t('hudPieces', { n: i + 1 }) + (a.placed && b.placed ? '' : t('noLabelShort'));
+  { const su = printSetup(); $('hudA').textContent = t('hudPieces', { n: i + 1, a: faceText('upper', su), b: faceText('lower', su) }) + (!PR.labels || (a.placed && b.placed) ? '' : t('noLabelShort')) + (a.tagged || b.tagged ? t('tagNote') : ''); }
   $('btnPrev').textContent = t('back');
   $('btnPlates').textContent = t('btnPlates');
 }
@@ -1843,11 +2015,45 @@ $('btnPrev').onclick = () => {
   const b = $('btnPrev'); b.textContent = t('generating'); b.disabled = true;
   setTimeout(() => { try { showPreview(+$('nPrev').value || 1); } catch (e) { console.error(e); toast(t('prevFail') + errText(e)); } b.disabled = false; }, 30);
 };
+$('btnSeg').onclick = async () => {
+  const btn = $('btnSeg'), sp = segPlan(); if (!sp.ok) return;
+  btn.disabled = true;
+  try {
+    const fl = Core.floors(params()), k = printFactor(), files = [], one = [{ i: 0, z: 0, s: 1, th: 0 }];
+    for (let q = 0; q < sp.n; q++) {
+      const a = q * sp.per, b = Math.min(S.count, a + sp.per), parts = [];
+      let nv = 0, nf = 0;
+      for (let i = a; i < b; i++) {
+        btn.textContent = t('segProg', { s: q + 1, n: sp.n, i: i - a + 1, m: b - a });
+        await new Promise(r => setTimeout(r, 0));
+        const g = Core.segmentFloor(baseMesh.V, baseMesh.F, geo.c, fl[i], k, PR.wall, geo.flat, fl[a].z, i > a ? 0.01 : 0, i < b - 1 ? 0.01 : 0);
+        parts.push(g); nv += g.V.length; nf += g.F.length;
+      }
+      const V = new Float64Array(nv), F = new Uint32Array(nf);
+      let ov = 0, of = 0;
+      for (const g of parts) { V.set(g.V, ov); for (let i = 0; i < g.F.length; i++) F[of + i] = g.F[i] + ov / 3; ov += g.V.length; of += g.F.length; }
+      files.push({ name: `${t('segFile')}${String(q + 1).padStart(2, '0')}_${t('segFloors', { a: a + 1, b })}.stl`, data: new Uint8Array(Core.exportSTL(V, F, [0, 0, 0], one, 1)) });
+    }
+    const stem = `${baseName()}_1-${PR.den}_${t('segWord')}`;
+    if (files.length === 1) save(files[0].data, stem + '.stl', 'model/stl');
+    else {
+      btn.textContent = t('zipping');
+      const entries = [];
+      for (const f of files) entries.push(await Core.zipEntry(`${stem}/${f.name}`, f.data));
+      const notes = [t('segN1'), t('n2', { s: PR.den, w: PR.wall, r: PR.wall * PR.den / 1000 }), t('segN2', { n: sp.n }), t('segNote')].join('\r\n');
+      entries.push(await Core.zipEntry(`${stem}/${t('notesFile')}`, new TextEncoder().encode('\ufeff' + notes)));
+      save(new Blob(Core.zipBlobParts(entries), { type: 'application/zip' }), stem + '.zip', 'application/zip');
+    }
+    toast(t('segDone', { n: sp.n }));
+  } catch (e) { console.error(e); toast(t('exportFail') + errText(e)); }
+  btn.textContent = t('btnSeg'); update(false);
+};
 $('btnPrint').onclick = async () => {
   const btn = $('btnPrint'); btn.disabled = true;
   try {
     const fl = Core.floors(params());
     const pk = await ensurePacked(t => { btn.textContent = t; });
+    const su = printSetup();
     const folder = `${baseName()}_1-${PR.den}_${t('folder')}/`;
     const entries = [], missing = new Set(), done = new Set();
     const plateOf = {};
@@ -1860,7 +2066,7 @@ $('btnPrint').onclick = async () => {
       const g = plateMesh(list, fl);
       g.missing.forEach(n => missing.add(n));
       const tag = String(i + 1).padStart(2, '0');
-      entries.push(await Core.zipEntry(`${folder}${t('fPlates')}/${t('plateFile')}${tag}_${list.map(x => x.name).join('_')}.stl`, new Uint8Array(Core.exportSTL(g.V, g.F, [0, 0, 0], one, 1))));
+      entries.push(await Core.zipEntry(`${folder}${t('fPlates')}/${t('plateFile')}${tag}.stl`, new Uint8Array(Core.exportSTL(g.V, g.F, [0, 0, 0], one, 1))));
       for (const it of list) {
         if (done.has(it.name)) continue;
         const pc = pieceByName(it.name, fl);
@@ -1879,7 +2085,7 @@ $('btnPrint').onclick = async () => {
     entries.push(await Core.zipEntry(folder + t('guideFile'), enc.encode(Core.assemblySVG(info))));
     const notes = [
       t('n1'), t('n2', { s: PR.den, w: PR.wall, r: PR.wall * PR.den / 1000 }),
-      t('n3'), t('n4'), t('n5', { d: S.step, g: t('guideFile') }), '',
+      t('n3', { a: faceText('upper', su), b: faceText('lower', su) }), ...(PR.labels ? [t(su.tag.upper || su.tag.lower ? (su.tag.upper && su.tag.lower ? 'n4tag' : 'n4mix') : 'n4')] : []), t('n5', { d: S.step, g: t('guideFile') }), '',
       t('n6', { f: t('fPlates'), m: PR.margin, gp: PR.gap }), t('n7'), t('n8', { f: t('fPieces') }), '',
       t('n9'), ...plates.map((p, i) => t('gPlateLine', { i: i + 1, list: p.join(t('sep')) })),
       ...(missing.size ? ['', t('n10', { list: [...missing].join(t('sep')) })] : []),
@@ -2326,7 +2532,7 @@ function updateRead() {
 $('segLang').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLang(b.dataset.v); });
 setMode(MODE, true);
 applyStatic();
-window.__app = { S, Core, SNAP, params, piecesFor, get geo() { return geo; }, get base() { return baseMesh; }, loadBuffer, rebuild, unpackUnit, gunzip, STORE };
+window.__app = { S, Core, SNAP, PR, params, piecesFor, printSetup, segPlan, get geo() { return geo; }, get base() { return baseMesh; }, loadBuffer, rebuild, unpackUnit, gunzip, STORE };
 init();
 })();
 </script>
