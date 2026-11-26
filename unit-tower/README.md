@@ -44,3 +44,9 @@ Both pages share a step bar: **‹ Catalogue · ① Unit ② Tower ③ Print**. 
 **② Tower / ③ Print**: Print parts is its own step; entering it previews the parts of the selected floor.
 
 **Display colours**: Display is now White model / Catalogue colours / Waist colour. A unit sent from the catalogue opens with Catalogue colours — the front and back colours of the palette chosen there (including “Original”), the front colour on the side the catalogue's normals face, the back colour on the other, and a blend on the rims. The palette can only be changed in the catalogue. Imported STLs have no catalogue colours; print previews stay white.
+
+## Sample unit download
+
+The page loads `sample-unit.bin` (0.28 MB), a lossless repack of `sample-unit.stl` (4.9 MB): the same triangles in the same order, bit for bit. It is downloaded once, kept in the browser (IndexedDB key `sample-bin-v1`), and read locally afterwards. The loading text shows the download percentage. If the compact file cannot be fetched or the browser cannot decompress it, the page falls back to the original STL; if that fails too, it keeps the current model and says so.
+
+Format (gzip of): `UTU1`, vertex count, triangle count (uint32 LE); vertex positions as float32, axis-major (all x, all y, all z), byte-shuffled; then one uint32 per triangle corner, byte-shuffled, holding `runningMax + 1 − index`. `pack-sample.py` rebuilds the file from `sample-unit.stl`.

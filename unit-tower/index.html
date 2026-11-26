@@ -1616,23 +1616,73 @@ for (const ev of ['dragleave', 'drop']) document.addEventListener(ev, e => { e.p
 document.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) importFile(f); });
 $('btnSample').onclick = loadSample;
 // the bundled sample unit sits next to this page; opened from disk (no server) it falls back to the plate
+// 示例单体：sample-unit.bin 是 sample-unit.stl 的无损压缩版（约 0.3 MB，原文件 4.9 MB），
+// 下载一次后存在浏览器里，之后直接从本地读。格式见 README。
+const SAMPLE_KEY = 'sample-bin-v1';
+async function fetchBytes(url, onProg, opts) {
+  const r = await fetch(url, opts); if (!r.ok) throw new Error(r.status);
+  const total = +r.headers.get('Content-Length') || 0;
+  if (!r.body || !total) return new Uint8Array(await r.arrayBuffer());
+  const rd = r.body.getReader(), parts = []; let got = 0;
+  for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; onProg(Math.min(1, got / total)); }
+  const out = new Uint8Array(got); let o = 0; for (const c of parts) { out.set(c, o); o += c.length; }
+  return out;
+}
+async function gunzip(bytes) {
+  if (!window.DecompressionStream) throw new Error('no DecompressionStream');
+  return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+}
+// compact bytes -> a binary STL buffer with the same triangles, in the same order, bit for bit
+function unpackUnit(u8) {
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  if (String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) !== 'UTU1') throw new Error('bad magic');
+  const nv = dv.getUint32(4, true), nt = dv.getUint32(8, true), np = nv * 3, ni = nt * 3;
+  if (u8.length !== 12 + 4 * np + 4 * ni) throw new Error('bad size');
+  const unshuffle = (off, n) => { const out = new Uint8Array(n * 4); for (let b = 0; b < 4; b++) { const src = off + b * n; for (let i = 0; i < n; i++) out[i * 4 + b] = u8[src + i]; } return out.buffer; };
+  const P = new Float32Array(unshuffle(12, np)), D = new Uint32Array(unshuffle(12 + 4 * np, ni));
+  const buf = new ArrayBuffer(84 + 50 * nt), out = new DataView(buf); out.setUint32(80, nt, true);
+  let mx = -1;
+  for (let t = 0; t < nt; t++) for (let k = 0; k < 3; k++) {
+    const v = mx + 1 - D[t * 3 + k]; if (v > mx) mx = v;
+    const o = 84 + t * 50 + 12 + k * 12;
+    out.setFloat32(o, P[v], true); out.setFloat32(o + 4, P[nv + v], true); out.setFloat32(o + 8, P[2 * nv + v], true);
+  }
+  return buf;
+}
+async function sampleBuffer(onProg) {
+  try { const c = await STORE.op('readonly', s => s.get(SAMPLE_KEY)); if (c && c.bytes) return unpackUnit(await gunzip(new Uint8Array(c.bytes))); } catch (e) {}
+  for (let i = 0; i < 2; i++) {
+    try {
+      const gz = await fetchBytes('sample-unit.bin', onProg, i ? { cache: 'reload' } : undefined);
+      const buf = unpackUnit(await gunzip(gz));
+      STORE.op('readwrite', s => s.put({ bytes: gz.buffer, at: Date.now() }, SAMPLE_KEY)).catch(() => {});
+      return buf;
+    } catch (e) { if (i === 0) await new Promise(res => setTimeout(res, 600)); }
+  }
+  // 兜底：原始 STL（浏览器不支持解压，或压缩版取不到）
+  try { return (await fetchBytes('sample-unit.stl', onProg)).buffer; } catch (e) { return null; }
+}
+let unitLoading = null;
 async function loadUnit(quiet) {
-  // 下载失败时重试一次；仍然失败就保留当前模型并明确提示，不再悄悄换成示例楼板
-  if (!quiet) toast(t('sampleLoading'));
-  let buf = null;
-  for (let i = 0; i < 2 && !buf; i++) {
-    try { const r = await fetch('sample-unit.stl', i ? { cache: 'reload' } : undefined); if (!r.ok) throw new Error(r.status); buf = await r.arrayBuffer(); }
-    catch (e) { if (i === 0) await new Promise(res => setTimeout(res, 800)); }
-  }
-  if (!buf) {
-    const disk = location.protocol === 'file:';
-    if (!raw || disk) loadSample();
-    toast(t(disk ? 'sampleNeedsWeb' : 'sampleFailed'));
-    return;
-  }
-  const wasCat = !!META; META = null; if (wasCat) Object.assign(S, GH);
-  loadBuffer(buf, '', quiet); sampleKind = 'unit'; updateInfo();
-  restoreParams();
+  if (unitLoading) { if (!quiet) toast(t('sampleLoading')); return unitLoading; }   // 已经在下载：不重复开始
+  const run = async () => {
+    if (!quiet) toast(t('sampleLoading'));
+    const ld = $('loading'), base = t('loadingUnit');
+    const onProg = p => { const tx = ' ' + Math.round(p * 100) + '%'; if (!ld.classList.contains('hidden')) ld.textContent = base + tx; const ts = $('toast'); if (!quiet && ts.classList.contains('show')) ts.textContent = t('sampleLoading') + tx; };
+    const buf = await sampleBuffer(onProg);
+    ld.textContent = base;
+    if (!buf) {
+      const disk = location.protocol === 'file:';
+      if (!raw || disk) loadSample();
+      toast(t(disk ? 'sampleNeedsWeb' : 'sampleFailed'));
+      return;
+    }
+    const wasCat = !!META; META = null; if (wasCat) Object.assign(S, GH);
+    loadBuffer(buf, '', quiet); sampleKind = 'unit'; updateInfo();
+    restoreParams();
+  };
+  unitLoading = run().finally(() => { unitLoading = null; });
+  return unitLoading;
 }
 $('btnUnit').onclick = () => loadUnit(false);
 $('btnForget').onclick = () => { STORE.del().catch(() => {}); const all = readParams(); for (const k of Object.keys(all)) if (k.startsWith('user:')) delete all[k]; try { localStorage.setItem(PARAM_KEY, JSON.stringify(all)); } catch (e) {} showForget(false); toast(t('forgotten')); };
@@ -2136,7 +2186,7 @@ function updateRead() {
 $('segLang').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLang(b.dataset.v); });
 setMode(MODE, true);
 applyStatic();
-window.__app = { S, Core, get geo() { return geo; }, loadBuffer, rebuild };
+window.__app = { S, Core, get geo() { return geo; }, loadBuffer, rebuild, unpackUnit, gunzip, STORE };
 init();
 })();
 </script>
