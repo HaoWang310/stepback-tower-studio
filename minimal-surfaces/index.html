@@ -1407,7 +1407,9 @@ if (!window.THREE || !THREE.OrbitControls){
 
 const canvas = $('#c');
 const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// 清晰度：至少按 1.5 倍渲染（普通屏幕、浏览器缩放时也不糊），最多 2 倍；画面很大时限制总像素
+function pixelRatio(w, h){ const want = Math.min(2, Math.max(devicePixelRatio || 1, 1.5)); return Math.max(1, Math.min(want, Math.sqrt(9e6/Math.max(1, w*h)))); }
+renderer.setPixelRatio(pixelRatio(innerWidth, innerHeight));
 renderer.outputEncoding = THREE.sRGBEncoding;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 1000);
@@ -1830,11 +1832,15 @@ $('#b-stl').addEventListener('click', async () => {
 relang = () => { if (cur){ rebuild(); } };
 function resize(){
   const st = $('#stage'), w = st.clientWidth || innerWidth, h = st.clientHeight || innerHeight;
+  const pr = pixelRatio(w, h); if (Math.abs(renderer.getPixelRatio() - pr) > 1e-3) renderer.setPixelRatio(pr);
   renderer.setSize(w, h, false);
   camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 canvas.addEventListener('dblclick', () => refView());
 if (window.ResizeObserver) new ResizeObserver(() => resize()).observe($('#stage'));
+// 窗口拖到另一块屏幕、或者改了浏览器缩放：像素密度变了，重新按新密度渲染
+(function watchDpr(){ if (!window.matchMedia) return; const mq = matchMedia(`(resolution: ${devicePixelRatio}dppx)`), on = () => { resize(); watchDpr(); };
+  if (mq.addEventListener) mq.addEventListener('change', on, {once:true}); else if (mq.addListener) mq.addListener(function f(){ mq.removeListener(f); on(); }); })();
 addEventListener('resize', resize);
 function route(){
   const x = SURFACES.find(y => y.id === location.hash.slice(1));
