@@ -2075,7 +2075,7 @@ const I18N = {
     secPrint: '打印分件', scale: '比例', wall: '打印壁厚', labels: '层号', emboss: '压凸字', noEmboss: '不压',
     margin: '盘边留白', gapP: '零件间距', prevFloor: '预览第', prevUnit: '层分件',
     btnPrev: '预览分件', btnPlates: '排盘预览', back: '返回塔楼', btnPrint: '导出 ZIP',
-    secExport: '导出', exportNote: '导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。', reset: '恢复 gh 默认参数',
+    secExport: '导出', exportNote: '导出使用原文件单位；OBJ 与 3DM 每层一个独立物件。', reset: '塔楼参数恢复默认', resetDone: '塔楼参数已恢复默认', sameUnit: '同一个单体：塔楼和打印设置都回到上次的样子（面板底部可「塔楼参数恢复默认」）',
     shade: '显示', whiteModel: '白模', waistColour: '收腰着色', envLines: '收腰轮廓', show: '显示', hide: '隐藏', legend: '收腰比例',
     fit: '重置视角', play: '▶ 播放', stop: '■ 停止',
     pK: '{i} / 5', p1: '单体 · Offset Mesh', p1s: '{w} × {d} × {h} m · {thick}', p1t: '加厚 {t} m（两侧各一半）', p1c: '闭合实体，直接使用',
@@ -2143,7 +2143,7 @@ const I18N = {
     secPrint: 'Print parts', scale: 'Scale', wall: 'Print wall', labels: 'Floor labels', emboss: 'Raised', noEmboss: 'None',
     margin: 'Plate margin', gapP: 'Part spacing', prevFloor: 'Preview floor', prevUnit: '',
     btnPrev: 'Preview parts', btnPlates: 'Preview plates', back: 'Back to tower', btnPrint: 'Export ZIP',
-    secExport: 'Export', exportNote: 'Exports use the file’s own units; OBJ and 3DM have one object per floor.', reset: 'Reset to gh defaults',
+    secExport: 'Export', exportNote: 'Exports use the file’s own units; OBJ and 3DM have one object per floor.', reset: 'Reset tower parameters', resetDone: 'Tower parameters reset', sameUnit: 'Same unit again: tower and print settings are back as you left them (reset at the bottom of the panel)',
     shade: 'Display', whiteModel: 'White model', waistColour: 'Waist colour', envLines: 'Waist outline', show: 'Show', hide: 'Hide', legend: 'Waist scale',
     fit: 'Reset view', play: '▶ Play', stop: '■ Stop',
     pK: '{i} / 5', p1: 'Unit · Offset Mesh', p1s: '{w} × {d} × {h} m · {thick}', p1t: 'thickened {t} m (half on each side)', p1c: 'closed solid, used as is',
@@ -2919,11 +2919,18 @@ function guessUnit(pos) {
   const m = Math.max(...bb.size);
   return m >= 1000 ? 0.001 : 1;
 }
+// a quick fingerprint of the file's bytes: the same name can carry a different unit (placement, combination…)
+let unitFP = '';
+function fingerprint(buf) {
+  const b = new Uint8Array(buf); let h = 2166136261;
+  for (let i = 0; i < b.length; i += 13) { h ^= b[i]; h = Math.imul(h, 16777619); }
+  return b.length + ':' + (h >>> 0).toString(36);
+}
 function loadBuffer(buf, name, quiet) {
   let pos;
   try { pos = Core.parseSTL(buf); } catch (e) { pos = null; }
   if (!pos || pos.length < 9) { toast(t('notStl')); return false; }
-  raw = pos; fileName = name; sampleKind = name ? null : sampleKind;
+  raw = pos; fileName = name; sampleKind = name ? null : sampleKind; unitFP = fingerprint(buf);
   S.scaleAuto = true; PR.formAuto = true; PR.denAuto = true;                    // 新载入的单体先按自动识别；记住的手动选择由 restoreParams 再放回来
   S.unit = guessUnit(pos);
   S.gap = defaultGap(pos, S.unit, S.upY);
@@ -2966,7 +2973,7 @@ function saveParams() {
   savePending = () => {
     savePending = null;
     const keep = ['count', 'gap', 'minR', 'curve', 'step', 'thick', 'pivot', 'unit', 'upY', 'scale', 'scaleAuto'];
-    const data = { v2: 1, at: Date.now(), S: Object.fromEntries(keep.map(k => [k, S[k]])), PR: { den: PR.den, wall: PR.wall, labels: PR.labels, margin: PR.margin, gap: PR.gap, form: PR.form, formAuto: PR.formAuto, denAuto: PR.denAuto }, VIS: { ...VIS } };
+    const data = { v2: 1, at: Date.now(), fp: unitFP, S: Object.fromEntries(keep.map(k => [k, S[k]])), PR: { den: PR.den, wall: PR.wall, labels: PR.labels, margin: PR.margin, gap: PR.gap, form: PR.form, formAuto: PR.formAuto, denAuto: PR.denAuto }, VIS: { ...VIS } };
     const all = readParams(); all[tag] = data;
     for (const k of Object.keys(all).sort((a, b) => all[b].at - all[a].at).slice(6)) delete all[k];   // keep the 6 most recent models
     try { localStorage.setItem(PARAM_KEY, JSON.stringify(all)); } catch (e) {}
@@ -3074,7 +3081,13 @@ async function init() {
   try { rec = await STORE.get(); } catch (e) {}
   META = rec && rec.meta && rec.meta.src === 'catalogue' ? rec.meta : null;
   if (rec && rec.buf && loadBuffer(rec.buf, rec.name, true)) {
-    if (META && META.fresh) {
+    const d1 = META && META.fresh ? readParams()[modelTag()] : null;
+    if (META && META.fresh && d1 && d1.fp && d1.fp === unitFP) {
+      // 同一个单体（文件一模一样）又从目录送来：塔楼和打印设置都回到上次的样子
+      restoreParams();
+      META.fresh = false; STORE.op('readwrite', s => s.put({ ...rec, meta: META }, 'last')).catch(() => {});
+      toast(t('sameUnit'));
+    } else if (META && META.fresh) {
       // 刚从目录送来：一个单体 = 一层（净高 0），扭转设为第一个能对接的角度
       Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY);
       if (META.pal){ VIS.pal = true; VIS.colour = false; }
@@ -3096,7 +3109,14 @@ async function init() {
   setMode(MODE);
   updateSteps();
 }
-$('btnReset').onclick = () => { Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY); syncAll(); rebuild(); };
+// 塔楼参数恢复默认：和刚从目录送来时一样（衔接型单体：净高 0、扭转取第一个能对接的角度）；打印设置不动
+$('btnReset').onclick = () => {
+  Object.assign(S, GH); S.gap = defaultGap(raw, S.unit, S.upY);
+  let a = null;
+  if (META) { a = autoStep(); if (a !== null) S.step = a; }
+  syncAll(); rebuild();
+  toast(a !== null ? t('autoStep', { a }) : t('resetDone'));
+};
 $('btnFit').onclick = () => { R.fit(); R.draw(); };
 for (const [id, key] of [['nMargin', 'margin'], ['nGapP', 'gap']]) {
   $(id).value = PR[key];
