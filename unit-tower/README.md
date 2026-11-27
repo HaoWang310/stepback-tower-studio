@@ -79,6 +79,10 @@ Bambu Studio reads an STL by merging points with identical coordinates and compl
 - **Repair STL** runs in a background worker built from the page's own MeshFix code: the steps tick as they finish, the time is shown, it can be cancelled; files that are not STL are refused.
 - Piece sizes include the snap-off number tag once it is known that tags are used; opening 打印 always opens the piece preview, after 保形 / simplification finish if they are still running.
 
+### Same unit from the catalogue again (Nov 2026)
+
+Saved parameters carry a fingerprint of the unit file. When the catalogue sends a unit whose file is byte-for-byte the same as one you worked on, the tower and print settings both come back as you left them; any change to the unit (shape, placement, combination…) starts the tower fresh (print choices still come back). **塔楼参数恢复默认** at the bottom of the tower panel resets the tower parameters as a fresh catalogue unit would (joining units: clear height 0, first joining twist), leaving the print settings alone.
+
 ## From the minimal surface catalogue
 
 Both pages share a step bar: **‹ Catalogue · ① Unit ② Tower ③ Print**. In the catalogue (`../minimal-surfaces/`), **Use as tower unit →** stores the current unit (open mid-surface with its placement and mirror array, Z up, scaled so one unit = one 3.6 m floor) in this browser and opens this page, which loads it with clear height 0. The twist is set to the first angle where floors join, and a unit card shows its thumbnail and parameters with a link back.
