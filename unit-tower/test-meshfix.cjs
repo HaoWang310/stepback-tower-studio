@@ -33,7 +33,19 @@ const r3 = M.repairBest(soup(V.slice(0, 24), F.slice(0, 33))); assert(r3.after.o
 // 4. not an STL
 assert(!M.isSTL(new ArrayBuffer(10)) && !M.isSTL(new Uint8Array(200).fill(7).buffer), 'junk is not an STL');
 assert(M.isSTL(Core.meshSTL(Float64Array.from(V), Uint32Array.from(F), 'x')), 'binary STL recognised');
-// 5. simplifying a dense wavy sheet keeps its open edge and stays close to it
+// 5. sew: a sheet split down the middle with the two edges 1e-6 apart is welded back into one; a real slit stays open
+{
+  const sheet = (gap, slit) => {
+    const n = 20, Vs = [], Fs = [], id = (i, j, side) => side * (n + 1) * (n + 1) + j * (n + 1) + i;
+    for (const side of [0, 1]) for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) Vs.push((side ? 1 + gap : 0) + i / n, j / n, 0);
+    for (const side of [0, 1]) for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const a = id(i, j, side), b = id(i + 1, j, side), c = id(i + 1, j + 1, side), d = id(i, j + 1, side); Fs.push(a, b, c, a, c, d); }
+    return { V: Float64Array.from(Vs), F: Uint32Array.from(Fs) };
+  };
+  const a = Core.sew(sheet(1e-6)), b = Core.sew(sheet(0.02));
+  assert.strictEqual(Core.edgeStats(a.F, a.V.length / 3).boundary.length, 2 * (40 + 20), 'seam welded: only the outer edge stays open');
+  assert(!b.sewn, 'a 0.02 slit is not a seam');
+}
+// 6. simplifying a dense wavy sheet keeps its open edge and stays close to it
 (async () => {
   const n = 120, Vs = [], Fs = [];
   for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { const x = i / n, y = j / n; Vs.push(x, y, 0.05 * Math.sin(6 * x) * Math.cos(5 * y)); }
@@ -42,5 +54,5 @@ assert(M.isSTL(Core.meshSTL(Float64Array.from(V), Uint32Array.from(F), 'x')), 'b
   assert(B.V.length / 3 <= 2000, 'reached the target');
   assert.strictEqual(Core.edgeStats(B.F, B.V.length / 3).boundary.length, 4 * n, 'open edge untouched');
   const dev = await Core.meshDeviation(A, B); assert(dev < 0.004, 'stays close: ' + dev);
-  console.log('PASS: labels are closed solids, MeshFix splits shared edges, turns faces, closes holes, rejects non-STL; simplify keeps the open edge (deviation ' + dev.toFixed(4) + '); both pages carry the same MeshFix.');
+  console.log('PASS: labels are closed solids, MeshFix splits shared edges, turns faces, closes holes, rejects non-STL; sew welds a split seam but keeps a real slit; simplify keeps the open edge (deviation ' + dev.toFixed(4) + '); both pages carry the same MeshFix.');
 })();

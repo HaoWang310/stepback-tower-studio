@@ -2085,10 +2085,107 @@ $('#file').addEventListener('change', e => {
 
 // ---------- STL（带厚度的闭合壳体）+ ZIP ----------
 // 合并重合顶点、求顶点法向（导出和加厚预览共用）
+// 拼缝焊接（和塔楼页 Core.sew 同一段代码）
+const Sew = (() => {
+  function edgeStats(F, nv) {
+    const cnt = new Map();
+    const dir = new Map();
+    for (let t = 0; t < F.length; t += 3) {
+      for (let e = 0; e < 3; e++) {
+        const a = F[t + e], b = F[t + (e + 1) % 3];
+        const key = a < b ? a * nv + b : b * nv + a;
+        cnt.set(key, (cnt.get(key) || 0) + 1);
+        dir.set(key, [a, b]);
+      }
+    }
+    const boundary = [];
+    let nonManifold = 0;
+    for (const [k, c] of cnt) {
+      if (c === 1) boundary.push(dir.get(k));
+      else if (c > 2) nonManifold++;
+    }
+    return { closed: boundary.length === 0 && nonManifold === 0, boundary, nonManifold, edges: cnt.size };
+  }
+
+  // 拼缝：对称复制拼起来的曲面，拼缝两边的点只差一点点却没连上（001 / 003 / 005）
+  // 第 1 步：开放边上距离 < 万分之一对角线、又不在同一个三角形里的点焊成一个
+  // 第 2 步"拉链"：从已经焊上的点沿开放边往外，下一个点离对面 < 千分之一对角线就接着焊（拼缝到开口附近会稍微张开）
+  // 一个点都没焊上的开放边（真正有宽度的缝、开口、外边）不动；焊完出现非流形边就放弃
+  function sew(M, rel = 1e-4, relZip = 1e-3) {
+    let R = sewOnce(M, rel, null);
+    if (!R) return M;
+    let total = R.sewn; const map = R.id;
+    for (let k = 0; k < 400; k++) { const Z = sewOnce(R, relZip, R.mark); if (!Z) break; for (let i = 0; i < map.length; i++) map[i] = Z.id[map[i]]; R = Z; total += Z.sewn; }
+    return { V: R.V, F: R.F, sewn: total, map };   // map: old vertex -> new vertex
+  }
+  function sewOnce(M, rel, mark) {
+    const V = M.V, F = M.F, nv = V.length / 3;
+    const es = edgeStats(F, nv);
+    if (!es.boundary.length) return null;
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < V.length; i += 3) for (let k = 0; k < 3; k++) { if (V[i + k] < lo[k]) lo[k] = V[i + k]; if (V[i + k] > hi[k]) hi[k] = V[i + k]; }
+    const tol = (Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1) * rel, tol2 = tol * tol;
+    const isB = new Uint8Array(nv), bnb = new Map();
+    for (const [a, b] of es.boundary) {
+      isB[a] = 1; isB[b] = 1;
+      (bnb.get(a) || bnb.set(a, []).get(a)).push(b); (bnb.get(b) || bnb.set(b, []).get(b)).push(a);
+    }
+    // zip mode: only points next to an already-sewn point
+    const cand = i => isB[i] && (!mark || mark[i] || bnb.get(i).some(j => mark[j]));
+    const fnb = new Map();
+    for (let t = 0; t < F.length; t += 3) for (let e = 0; e < 3; e++) {
+      const a = F[t + e]; if (!isB[a]) continue;
+      let q = fnb.get(a); if (!q) fnb.set(a, q = new Set());
+      q.add(F[t + (e + 1) % 3]); q.add(F[t + (e + 2) % 3]);
+    }
+    const cell = i => [Math.floor(V[i * 3] / tol), Math.floor(V[i * 3 + 1] / tol), Math.floor(V[i * 3 + 2] / tol)];
+    const grid = new Map();
+    for (let i = 0; i < nv; i++) if (cand(i)) { const k = cell(i).join(','); let g = grid.get(k); if (!g) grid.set(k, g = []); g.push(i); }
+    const par = new Int32Array(nv); for (let i = 0; i < nv; i++) par[i] = i;
+    const find = x => { while (par[x] !== x) x = par[x] = par[par[x]]; return x; };
+    const used = mark ? new Uint8Array(nv) : null;
+    let joined = 0;
+    for (let i = 0; i < nv; i++) {
+      if (!cand(i) || (used && used[i])) continue;
+      const [cx, cy, cz] = cell(i);
+      let best = -1, bd = tol2;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+        const g = grid.get((cx + dx) + ',' + (cy + dy) + ',' + (cz + dz)); if (!g) continue;
+        for (const j of g) {
+          if (j === i || fnb.get(i).has(j) || (used && used[j])) continue;
+          if (mark && mark[i] && mark[j]) continue;          // both already sewn: nothing new to zip
+          const x = V[i * 3] - V[j * 3], y = V[i * 3 + 1] - V[j * 3 + 1], z = V[i * 3 + 2] - V[j * 3 + 2], d = x * x + y * y + z * z;
+          if (d > bd) continue;
+          if (mark) { best = j; bd = d; continue; }
+          const a = find(i), b = find(j); if (a !== b) { par[b] = a; joined++; }
+        }
+      }
+      if (mark && best >= 0) { const a = find(i), b = find(best); if (a !== b) { par[b] = a; joined++; used[i] = used[best] = 1; } }
+    }
+    if (!joined) return null;
+    const id = new Int32Array(nv).fill(-1), out = [], cnt = [];
+    for (let i = 0; i < nv; i++) { const r = find(i); if (id[r] < 0) { id[r] = out.length / 3; out.push(V[r * 3], V[r * 3 + 1], V[r * 3 + 2]); cnt.push(0); } id[i] = id[r]; cnt[id[i]]++; }
+    const Fo = [], seen = new Set();
+    for (let t = 0; t < F.length; t += 3) {
+      const a = id[F[t]], b = id[F[t + 1]], c = id[F[t + 2]];
+      if (a === b || b === c || a === c) continue;
+      const key = [a, b, c].sort((p, q) => p - q).join(',');
+      if (seen.has(key)) continue; seen.add(key); Fo.push(a, b, c);
+    }
+    const R = { V: new Float64Array(out), F: new Uint32Array(Fo), sewn: joined, id };
+    if (edgeStats(R.F, R.V.length / 3).nonManifold > es.nonManifold) return null;
+    R.mark = new Uint8Array(cnt.length);
+    for (let i = 0; i < nv; i++) if (cnt[id[i]] > 1 || (mark && mark[i])) R.mark[id[i]] = 1;
+    return R;
+  }
+
+  return { sew };
+})();
 function baseFrom(src, idx){
   const nV = src.length/3;
   // 数值哈希合并重合顶点（比字符串键快数倍）
-  const map = new Map(), remap = new Uint32Array(nV), K = new Int32Array(nV*3), Pp = [], q = 1e5;
+  const map = new Map(), remap = new Uint32Array(nV), K = new Int32Array(nV*3), q = 1e5;
+  let Pp = [];
   for (let v=0; v<nV; v++){
     const a = Math.round(src[v*3]*q), b = Math.round(src[v*3+1]*q), c = Math.round(src[v*3+2]*q);
     const h = ((a*73856093) ^ (b*19349663) ^ (c*83492791)) | 0;
@@ -2097,8 +2194,11 @@ function baseFrom(src, idx){
     if (id < 0){ id = Pp.length/3; K[id*3]=a; K[id*3+1]=b; K[id*3+2]=c; Pp.push(src[v*3], src[v*3+1], src[v*3+2]); if (lst) lst.push(id); else map.set(h, [id]); }
     remap[v] = id;
   }
-  const T = [];
+  let T = [];
   for (let i=0; i<idx.length; i+=3){ const a = remap[idx[i]], b = remap[idx[i+1]], c = remap[idx[i+2]]; if (a!==b && b!==c && a!==c) T.push(a,b,c); }
+  // 对称复制拼起来的曲面：拼缝两边差一点点没合上，焊成一体（不然加厚后接缝处夹着两层面）
+  { const r = Sew.sew({V: Pp, F: T});
+    if (r.map){ Pp = Array.from(r.V); T = Array.from(r.F); for (let v=0; v<nV; v++) remap[v] = r.map[remap[v]]; } }
   const n = Pp.length/3, N = new Float64Array(n*3);
   for (let i=0; i<T.length; i+=3){
     const a = T[i]*3, b = T[i+1]*3, c = T[i+2]*3;

@@ -696,6 +696,78 @@ const Core = (() => {
     return { V: new Float64Array(V), F: new Uint32Array(F) };
   }
 
+  // 拼缝：对称复制拼起来的曲面，拼缝两边的点只差一点点却没连上（001 / 003 / 005）
+  // 第 1 步：开放边上距离 < 万分之一对角线、又不在同一个三角形里的点焊成一个
+  // 第 2 步"拉链"：从已经焊上的点沿开放边往外，下一个点离对面 < 千分之一对角线就接着焊（拼缝到开口附近会稍微张开）
+  // 一个点都没焊上的开放边（真正有宽度的缝、开口、外边）不动；焊完出现非流形边就放弃
+  function sew(M, rel = 1e-4, relZip = 1e-3) {
+    let R = sewOnce(M, rel, null);
+    if (!R) return M;
+    let total = R.sewn; const map = R.id;
+    for (let k = 0; k < 400; k++) { const Z = sewOnce(R, relZip, R.mark); if (!Z) break; for (let i = 0; i < map.length; i++) map[i] = Z.id[map[i]]; R = Z; total += Z.sewn; }
+    return { V: R.V, F: R.F, sewn: total, map };   // map: old vertex -> new vertex
+  }
+  function sewOnce(M, rel, mark) {
+    const V = M.V, F = M.F, nv = V.length / 3;
+    const es = edgeStats(F, nv);
+    if (!es.boundary.length) return null;
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < V.length; i += 3) for (let k = 0; k < 3; k++) { if (V[i + k] < lo[k]) lo[k] = V[i + k]; if (V[i + k] > hi[k]) hi[k] = V[i + k]; }
+    const tol = (Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1) * rel, tol2 = tol * tol;
+    const isB = new Uint8Array(nv), bnb = new Map();
+    for (const [a, b] of es.boundary) {
+      isB[a] = 1; isB[b] = 1;
+      (bnb.get(a) || bnb.set(a, []).get(a)).push(b); (bnb.get(b) || bnb.set(b, []).get(b)).push(a);
+    }
+    // zip mode: only points next to an already-sewn point
+    const cand = i => isB[i] && (!mark || mark[i] || bnb.get(i).some(j => mark[j]));
+    const fnb = new Map();
+    for (let t = 0; t < F.length; t += 3) for (let e = 0; e < 3; e++) {
+      const a = F[t + e]; if (!isB[a]) continue;
+      let q = fnb.get(a); if (!q) fnb.set(a, q = new Set());
+      q.add(F[t + (e + 1) % 3]); q.add(F[t + (e + 2) % 3]);
+    }
+    const cell = i => [Math.floor(V[i * 3] / tol), Math.floor(V[i * 3 + 1] / tol), Math.floor(V[i * 3 + 2] / tol)];
+    const grid = new Map();
+    for (let i = 0; i < nv; i++) if (cand(i)) { const k = cell(i).join(','); let g = grid.get(k); if (!g) grid.set(k, g = []); g.push(i); }
+    const par = new Int32Array(nv); for (let i = 0; i < nv; i++) par[i] = i;
+    const find = x => { while (par[x] !== x) x = par[x] = par[par[x]]; return x; };
+    const used = mark ? new Uint8Array(nv) : null;
+    let joined = 0;
+    for (let i = 0; i < nv; i++) {
+      if (!cand(i) || (used && used[i])) continue;
+      const [cx, cy, cz] = cell(i);
+      let best = -1, bd = tol2;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+        const g = grid.get((cx + dx) + ',' + (cy + dy) + ',' + (cz + dz)); if (!g) continue;
+        for (const j of g) {
+          if (j === i || fnb.get(i).has(j) || (used && used[j])) continue;
+          if (mark && mark[i] && mark[j]) continue;          // both already sewn: nothing new to zip
+          const x = V[i * 3] - V[j * 3], y = V[i * 3 + 1] - V[j * 3 + 1], z = V[i * 3 + 2] - V[j * 3 + 2], d = x * x + y * y + z * z;
+          if (d > bd) continue;
+          if (mark) { best = j; bd = d; continue; }
+          const a = find(i), b = find(j); if (a !== b) { par[b] = a; joined++; }
+        }
+      }
+      if (mark && best >= 0) { const a = find(i), b = find(best); if (a !== b) { par[b] = a; joined++; used[i] = used[best] = 1; } }
+    }
+    if (!joined) return null;
+    const id = new Int32Array(nv).fill(-1), out = [], cnt = [];
+    for (let i = 0; i < nv; i++) { const r = find(i); if (id[r] < 0) { id[r] = out.length / 3; out.push(V[r * 3], V[r * 3 + 1], V[r * 3 + 2]); cnt.push(0); } id[i] = id[r]; cnt[id[i]]++; }
+    const Fo = [], seen = new Set();
+    for (let t = 0; t < F.length; t += 3) {
+      const a = id[F[t]], b = id[F[t + 1]], c = id[F[t + 2]];
+      if (a === b || b === c || a === c) continue;
+      const key = [a, b, c].sort((p, q) => p - q).join(',');
+      if (seen.has(key)) continue; seen.add(key); Fo.push(a, b, c);
+    }
+    const R = { V: new Float64Array(out), F: new Uint32Array(Fo), sewn: joined, id };
+    if (edgeStats(R.F, R.V.length / 3).nonManifold > es.nonManifold) return null;
+    R.mark = new Uint8Array(cnt.length);
+    for (let i = 0; i < nv; i++) if (cnt[id[i]] > 1 || (mark && mark[i])) R.mark[id[i]] = 1;
+    return R;
+  }
+
   function edgeStats(F, nv) {
     const cnt = new Map();
     const dir = new Map();
@@ -1164,7 +1236,7 @@ const Core = (() => {
 
   // ---------------- print parts (cut each floor in half, constant wall, labels) ----------------
   // split an open surface at z = zc into two triangle soups, sharing the exact cut points
-  function cutZ(V, F, zc) {
+  function cutZ(V, F, zc, retry) {
     const nv = V.length / 3;
     const bb = bbox(V);
     const eps = (Math.hypot(...bb.size) || 1) * 1e-6;
@@ -1197,7 +1269,37 @@ const Core = (() => {
       tri(1 - hp, P1, P(q), P(r));
       tri(1 - hp, P1, P(r), P2);
     }
-    return { lo: weld(new Float32Array(out[0]), false), hi: weld(new Float32Array(out[1]), false), zc };
+    const res = { lo: weld(new Float32Array(out[0]), false), hi: weld(new Float32Array(out[1]), false), zc };
+    // a saddle point lying exactly on the cut (common on a symmetry plane, e.g. 005 once its seams are welded) leaves a
+    // point where two parts of a half only touch; thickened, both get the same wall there and the STL turns non-manifold.
+    // Then cut halfway to the next row of points above instead (a fraction of a triangle higher).
+    if (!retry && (pinched(res.lo) || pinched(res.hi))) {
+      let up = Infinity; for (let i = 0; i < nv; i++) if (d[i] > eps && d[i] < up) up = d[i];
+      if (isFinite(up)) return cutZ(V, F, zc + up / 2, true);
+    }
+    return res;
+  }
+  // a vertex whose faces fall into more than one fan (two parts touching at a point)
+  function pinched(M) {
+    const V = M.V, F = M.F, nv = V.length / 3, start = new Int32Array(nv + 1);
+    for (let k = 0; k < F.length; k++) start[F[k] + 1]++;
+    for (let i = 0; i < nv; i++) start[i + 1] += start[i];
+    const list = new Int32Array(F.length), fill = start.slice(0, nv);
+    for (let k = 0; k < F.length; k++) list[fill[F[k]]++] = (k / 3) | 0;
+    for (let v = 0; v < nv; v++) {
+      const a = start[v], b = start[v + 1]; if (b - a < 2) continue;
+      // walk the fan from the first face across shared edges; a face left over = a second fan
+      const fs = Array.from(list.subarray(a, b)), seen = new Set([fs[0]]), stack = [fs[0]];
+      while (stack.length) {
+        const f = stack.pop();
+        for (const g of fs) if (!seen.has(g)) {
+          let sh = 0; for (let x = 0; x < 3; x++) { const u = F[f * 3 + x]; if (u !== v && (F[g * 3] === u || F[g * 3 + 1] === u || F[g * 3 + 2] === u)) sh++; }
+          if (sh) { seen.add(g); stack.push(g); }
+        }
+      }
+      if (seen.size < fs.length) return true;
+    }
+    return false;
   }
 
   function boxTris(x0, y0, z0, x1, y1, z1, V, F) {
@@ -1405,7 +1507,7 @@ const Core = (() => {
       }
       const zEnd = flat ? (isUpper ? flat.z1 : flat.z0) : undefined;
       // 保形: per-vertex walls from the form field (rooms scale with the floor)
-      const fw = opt.form ? formWalls(opt.form.field, opt.form.idx[isUpper ? 'hi' : 'lo'], wallMM / k, SC, part.F) : null;
+      const fw = opt.form ? formWalls(opt.form.field, opt.form.idx[isUpper ? 'hi' : 'lo'], wallMM / k, SC, part.F, part.V) : null;
       const sh = shell(Vs, part.F, wallMM / k, [halves.zc, flat ? { z: zEnd, tol: flat.tol, boundary: true } : undefined], fw);
       // nothing may cross the cut plane (or, for joining units, the unit's own top / bottom): near-horizontal
       // surface next to it gets pushed past it by the offset and would hold the pieces apart, so clamp it flat
@@ -1462,7 +1564,7 @@ const Core = (() => {
       Vs[i * 3] = c[0] + (V[i * 3] - c[0]) * sc; Vs[i * 3 + 1] = c[1] + (V[i * 3 + 1] - c[1]) * sc; Vs[i * 3 + 2] = V[i * 3 + 2];
     }
     let fw = null;
-    if (field) { let idx = fidx; if (!idx) { idx = new Int32Array(n); for (let i = 0; i < n; i++) idx[i] = i; } fw = formWalls(field, idx, wallMM / k, SC, F); }
+    if (field) { let idx = fidx; if (!idx) { idx = new Int32Array(n); for (let i = 0; i < n; i++) idx[i] = i; } fw = formWalls(field, idx, wallMM / k, SC, F, V); }
     const sh = shell(Vs, F, wallMM / k, [{ z: flat.z0, tol: flat.tol, boundary: true }, { z: flat.z1, tol: flat.tol, boundary: true }], fw);
     const cs = Math.cos(f.th), sn = Math.sin(f.th), W = new Float64Array(sh.V.length);
     for (let i = 0; i < W.length; i += 3) {
@@ -1651,23 +1753,47 @@ const Core = (() => {
   // per-vertex walls (file units) on each side for a wanted total t: each side gets half, a side that
   // has no room passes what it cannot take to the other side (if that side faces another part, not outward);
   // rooms are scaled by sc (the floor's scale, per vertex). Returns { a, b, thin } aligned with the field.
-  function formWalls(field, idx, t, sc, F) {
-    const n = idx.length, a = new Float64Array(n), b = new Float64Array(n);
+  // 壁厚过渡：每点壁厚 = min( 本点空间上限 , 相邻点平均 )，反复几遍 —— 壁厚不会在相邻两点之间跳（跳了外表面就起皱），
+  // 也永远不超过空间（开口和缝的形状不变）。过渡带约 1.2 × 壁厚，按距离算，不随网格疏密变。
+  // 大网格的空间场是一块一块的（按采样点分区）：先把每块的上限往外取最小值、再磨平，块边也不会跳。
+  const FORM_BLEND = 1.2;
+  function formWalls(field, idx, t, sc, F, V) {
+    const n = idx.length, a = new Float64Array(n), b = new Float64Array(n), capA = new Float64Array(n), capB = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       const j = idx[i], q = sc ? sc[i] : 1;
       const rp = isFinite(field.rp[j]) ? field.rp[j] * q : Math.min(t / 2, field.foldP[j] * q);
       const rm = isFinite(field.rm[j]) ? field.rm[j] * q : Math.min(t / 2, field.foldM[j] * q);
       const a0 = Math.min(t / 2, rp), b0 = Math.min(t / 2, rm);
       const a1 = Math.min(rp, t - b0), b1 = Math.min(rm, t - a1);
-      a[i] = a1; b[i] = b1;
+      a[i] = a1; b[i] = b1; capA[i] = rp; capB[i] = rm;
     }
-    // two passes of min-smoothing over the mesh, so the wall does not jump between neighbours
-    if (F) for (let it = 0; it < 2; it++) {
-      for (const X of [a, b]) {
-        const sum = new Float64Array(n), c = new Float64Array(n);
-        for (let k = 0; k < F.length; k += 3) for (let e = 0; e < 3; e++) { const p = F[k + e], q = F[k + (e + 1) % 3]; sum[p] += X[q]; c[p]++; sum[q] += X[p]; c[q]++; }
-        for (let i = 0; i < n; i++) if (c[i]) X[i] = Math.min(X[i], 0.5 * X[i] + 0.5 * sum[i] / c[i]);
+    if (F && F.length) {
+      const deg = new Float64Array(n);
+      for (let k = 0; k < F.length; k++) deg[F[k]] += 2;
+      const avgPass = (X, C) => {
+        const sum = new Float64Array(n);
+        for (let k = 0; k < F.length; k += 3) for (let e = 0; e < 3; e++) { const p = F[k + e], q = F[k + (e + 1) % 3]; sum[p] += X[q]; sum[q] += X[p]; }
+        for (let i = 0; i < n; i++) if (deg[i]) X[i] = Math.min(C[i], 0.5 * X[i] + 0.5 * sum[i] / deg[i]);
+      };
+      // a piecewise-constant field (fewer samples than points): erode each block's room by its size, then blend
+      const nField = field.rp.length, rings = field.sources && field.sources < 0.9 * nField ? Math.max(1, Math.min(6, Math.round(Math.sqrt(nField / field.sources)))) : 0;
+      if (rings) for (const C of [capA, capB]) {
+        const C0 = Float64Array.from(C);
+        for (let r = 0; r < rings; r++) {
+          const M = Float64Array.from(C);
+          for (let k = 0; k < F.length; k += 3) for (let e = 0; e < 3; e++) { const p = F[k + e], q = F[k + (e + 1) % 3]; if (C[q] < M[p]) M[p] = C[q]; if (C[p] < M[q]) M[q] = C[p]; }
+          C.set(M);
+        }
+        for (let r = 0; r < 2 * rings; r++) avgPass(C, C0);
       }
+      for (let i = 0; i < n; i++) { if (a[i] > capA[i]) a[i] = capA[i]; if (b[i] > capB[i]) b[i] = capB[i]; }
+      // passes for a blend of about FORM_BLEND × t: diffusion reaches ~ L·sqrt(passes / 2)
+      let L = 0, m = 0;
+      if (V) for (let k = 0; k < F.length; k += 9) { const p = F[k] * 3, q = F[k + 1] * 3; L += Math.hypot(V[p] - V[q], V[p + 1] - V[q + 1], V[p + 2] - V[q + 2]); m++; }
+      L = m ? L / m : 0;
+      const passes = L > 0 ? Math.max(2, Math.min(80, Math.round(2 * (FORM_BLEND * t / L) ** 2))) : 12;
+      for (let it = 0; it < passes; it++) { avgPass(a, capA); avgPass(b, capB); }
+      for (let i = 0; i < n; i++) { const w = a[i] + b[i]; if (w > t) { a[i] *= t / w; b[i] *= t / w; } }   // never thicker than asked
     }
     const thin = new Uint8Array(n); let nThin = 0;
     for (let i = 0; i < n; i++) if (a[i] + b[i] < 0.95 * t) { thin[i] = 1; nThin++; }
@@ -2048,7 +2174,7 @@ const Core = (() => {
     return t.join('\n');
   }
 
-  return { parseSTL, bbox, weld, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, envScale, floors, scaleAt, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, towerSolid, meshSTL, rectSolid, simplifyMesh, meshDeviation, printability, bedPlane, segmentFloor, addLabel, formField, formWalls, nearestIndex, glyphRects, tagSize, TAG, zipEntry, zipBlobParts, crc32, assemblySVG, footprintMask, rotMask, packPlates, placeOnPlate };
+  return { parseSTL, bbox, weld, sew, unifyNormals, shell, edgeStats, volumeCentroid, areaCentroid, vertexNormals, profile, envScale, floors, scaleAt, xf, exportSTL, exportOBJ, export3DM, samplePlate, cutZ, printPieces, towerSolid, meshSTL, rectSolid, simplifyMesh, meshDeviation, printability, bedPlane, segmentFloor, addLabel, formField, formWalls, nearestIndex, glyphRects, tagSize, TAG, zipEntry, zipBlobParts, crc32, assemblySVG, footprintMask, rotMask, packPlates, placeOnPlate };
 })();
 if (typeof module !== 'undefined') module.exports = Object.assign(Core, { MeshFix });
 // ===================== CORE-END =====================
@@ -2096,6 +2222,7 @@ const I18N = {
     formManual: '手动比例：这个比例下壁最多约 {m} mm，再厚的地方按形收薄', formTooBig: '单片放不进 A1：保形时壁最厚 {m} mm', formFixWall: '壁厚改成 {m} mm',
     recSeg: '推荐整段打印（塔不细）', recPieces: '推荐分件打印（塔细长：高是宽的 {r} 倍）',
     chkHint: '导出时自动做拓竹检查（非流形边、破洞、法向），有问题当场修好', chkOk: '拓竹检查通过', chkOkD: '0 非流形边 · 0 破洞 · 法向一致 · {n} 个文件', chkMerged: '整座塔是一个闭合实体', chkFixed: '发现 {k} 处，导出时已自动修好', chkFixedD: '{m} / {n} 个文件修过', chkFiles: '看是哪几个文件', chkLeft: '还有 {k} 处没拆开（多在曲面的尖角上）；拓竹会提示，可以照常切片', chkBig: '文件太大（{t} 万面），没有检查', chkBigTower: '模型太大，层与层分开导出、没有合并', merging: '合并成一个实体…', checking: '检查…',
+    simpForm: '保形开着：打印件用完整的 {a} 万点网格（简化会在变薄处折出鼓包）；塔楼 STL / 3DM 仍用简化网格',
     simpBusy: '网格很密（{a} 万点），正在简化成约 4 万点再导出… {p}%', simpOk: '网格已简化：{a} 万 → {b} 万点，按这个比例形状最多差 {d} mm', simpOff: '按这个比例，简化后最多会差 {d} mm（超过 0.05 mm）：导出用完整网格，文件很大、较慢',
     chkTidy: '清理了 {n} 个零面积小三角形（精度造成的，不算问题）', withTag: '（含号牌）',
     fixNotStl: '这不是 STL 文件（或文件是空的）', fixCancel: '取消', fixCancelled: '已取消', fixTime: '已用 {s} 秒',
@@ -2164,6 +2291,7 @@ const I18N = {
     formManual: 'Manual scale: at this scale the wall can be about {m} mm; thicker spots are thinned to keep the form', formTooBig: 'Pieces do not fit the A1: with the form kept the wall can be at most {m} mm', formFixWall: 'Set the wall to {m} mm',
     recSeg: 'Printing in segments is recommended (the tower is not slender)', recPieces: 'Printing in parts is recommended (slender tower: {r}× taller than wide)',
     chkHint: 'Each export is checked the way Bambu Studio reads it (non-manifold edges, holes, normals) and fixed on the spot', chkOk: 'Bambu check passed', chkOkD: '0 non-manifold edges · 0 holes · normals agree · {n} files', chkMerged: 'the whole tower is one closed solid', chkFixed: '{k} problems found, fixed during export', chkFixedD: '{m} of {n} files fixed', chkFiles: 'which files', chkLeft: '{k} spots could not be separated (mostly at sharp corners of the surface); Bambu Studio will warn, slicing works as usual', chkBig: 'file too large ({t}0k faces), not checked', chkBigTower: 'model too large: floors exported separately, not merged', merging: 'Merging into one solid…', checking: 'Checking…',
+    simpForm: 'Keep form is on: print pieces use the full {a}0k-point mesh (simplifying would fold small bumps where the wall thins); tower STL / 3DM still use the simplified one',
     simpBusy: 'Dense mesh ({a}0k points): simplifying to about 40k before export… {p}%', simpOk: 'Mesh simplified: {a}0k → {b}0k points; at this scale the form differs by at most {d} mm', simpOff: 'At this scale the simplified mesh would differ by up to {d} mm (more than 0.05 mm): exports use the full mesh, large and slow',
     chkTidy: '{n} zero-area slivers tidied (rounding, not a defect)', withTag: ' (with tag)',
     fixNotStl: 'This is not an STL file (or it is empty)', fixCancel: 'Cancel', fixCancelled: 'Cancelled', fixTime: '{s} s so far',
@@ -2230,12 +2358,14 @@ function applyVis(cb, lines) {
 const PR = { den: 500, wall: 1.2, labels: true, preview: 0, margin: 10, gap: 6, plate: 0, form: false, formAuto: true, denAuto: true };
 let packCache = null;
 let halves = null;
-let raw = null, fileName = '', sampleKind = 'slab', baseMesh = null, geo = null;
+let raw = null, fileName = '', sampleKind = 'slab', baseMesh = null, geo = null, welded = null;
 const dispName = () => sampleKind ? t(sampleKind === 'slab' ? 'sampleSlab' : 'sampleUnit') : fileName;
 
 // ---------- geometry state ----------
 function rebuild() {
-  baseMesh = Core.weld(raw, S.upY);
+  // 焊点 + 焊拼缝只在换单体 / 换竖轴时做一次（004 这种 20 万点的要 1 秒多）
+  if (!welded || welded.raw !== raw || welded.upY !== S.upY) welded = { raw, upY: S.upY, M: Core.sew(Core.weld(raw, S.upY)) };
+  baseMesh = welded.M;
   const es = Core.edgeStats(baseMesh.F, baseMesh.V.length / 3);
   let V = baseMesh.V, F = baseMesh.F, thick = false, side = null;
   if (!es.closed && es.boundary.length && es.nonManifold === 0) {
@@ -2465,6 +2595,8 @@ const simpReady = () => !!SIMP.mesh && SIMP.key === simpKey();
 const simpWait = () => !!simpKey() && !simpReady();
 const simpOK = () => simpReady() && SIMP.dev * printFactor() <= SIMP_MM;
 const exportBase = () => simpOK() ? SIMP.mesh : baseMesh;
+// 打印件：保形开时用完整网格 —— 变薄处的壁厚在很短距离里变化，简化后的大三角形会把它折成 0.1–0.5 mm 的鼓包
+const printBase = () => PR.form ? baseMesh : exportBase();
 function scheduleSimp() { if (simpKey() && !simpReady() && !SIMP.busy) runSimp(); }
 async function runSimp() {
   const k = simpKey(); if (!k) return;
@@ -2491,14 +2623,15 @@ function exportGeo() {
   SIMP.geo = { thick: S.thick, src: eb, g: { V: r.V, F: r.F, c: geo.c } };
   return SIMP.geo.g;
 }
-function simpText() {
+function simpText(print) {
   if (!simpKey()) return '';
   const a = fmt(baseMesh.V.length / 3 / 1e4, 1);
+  if (print && PR.form) return t('simpForm', { a });
   if (!simpReady()) return t('simpBusy', { a, p: Math.round(SIMP.p * 100) });
   const b = fmt(SIMP.mesh.V.length / 3 / 1e4, 1), d = SIMP.dev * printFactor();
   return simpOK() ? t('simpOk', { a, b, d: fmt(d, 3) }) : `<span class="caution">${t('simpOff', { d: fmt(d, 3) })}</span>`;
 }
-function updateSimpRead() { const h = simpText(); for (const id of ['readSimp', 'readSimp2']) { const el = $(id); if (el && el.innerHTML !== h) el.innerHTML = h; } }
+function updateSimpRead() { for (const id of ['readSimp', 'readSimp2']) { const el = $(id), h = simpText(id === 'readSimp2'); if (el && el.innerHTML !== h) el.innerHTML = h; } }
 
 // ---------- 保形（办法 B）----------
 // 每一处两侧还有多少空间，只和单体、基点、扭转角、层距有关：在后台算一次，之后改壁厚、比例都是实时的
@@ -2589,7 +2722,7 @@ function updateFormRead(pl) {
 const PLATE = 256, MARGIN = 5, GAP = 6;
 function printFactor() { return S.unit * 1000 / PR.den; }              // mm per file unit
 function getHalves() {
-  const src = exportBase();
+  const src = printBase();
   if (!halves || halves.src !== src) {
     const bb0 = Core.bbox(baseMesh.V);
     halves = Core.cutZ(src.V, src.F, (bb0.min[2] + bb0.max[2]) / 2);
@@ -2656,7 +2789,7 @@ function updatePrint(fl) {
   updateFormRead(formMax !== undefined ? { formMax } : null);
   if (!ok) { $('readPrint').innerHTML = `<span class="warn">${t('printClosed')}</span>`; updateSeg(false); return; }
   const pl = plan(fl);
-  const waiting = (PR.form && !formReady()) || simpWait();
+  const waiting = PR.form ? !formReady() : simpWait();
   if (waiting) $('btnPrev').disabled = $('btnPlates').disabled = true;
   updateSeg(pl.fits && !waiting);
   if (waiting) $('btnPrint').disabled = true;
@@ -2681,7 +2814,7 @@ function updatePrint(fl) {
   renderChks();
 }
 function packKey() {
-  return JSON.stringify([fileName, S.unit, S.upY, S.count, S.minR, S.curve, S.thick, PR.den, PR.wall, PR.margin, PR.gap, S.scale, S.scale === 'cont' ? S.gap : 0, S.pivot, PR.labels, SNAP.kind, formReady() ? FORM.key : 0, S.step, simpOK() ? 1 : 0]);
+  return JSON.stringify([fileName, S.unit, S.upY, S.count, S.minR, S.curve, S.thick, PR.den, PR.wall, PR.margin, PR.gap, S.scale, S.scale === 'cont' ? S.gap : 0, S.pivot, PR.labels, SNAP.kind, formReady() ? FORM.key : 0, S.step, printBase() === baseMesh ? 0 : 1]);
 }
 // 每种半片（上半 / 下半）定一次：哪一面朝下（比较两种朝向的悬空和贴盘面积），层号压在零件上还是做成旁边的小号牌
 let setupCache = null;
@@ -2791,6 +2924,7 @@ const floorScale = f => f.env ? z => Core.scaleAt(f, z) : f.s;
 function piecesFor(i, fl) {
   return Core.printPieces(getHalves(), geo.c, floorScale(fl[i]), printFactor(), PR.wall, i + 1, PR.labels, 5, pieceOpt());
 }
+let lastPrev = null;   // test hook: the piece preview geometry
 function showPreview(n) {
   const fl = Core.floors(params());
   const i = Math.max(1, Math.min(S.count, n | 0)) - 1;
@@ -2810,6 +2944,7 @@ function showPreview(n) {
   PR.preview = i + 1; PR.plate = 0;
   R.setPlate(null);
   applyVis(0, false);
+  lastPrev = g;
   R.upload(g); R.setFloors([{ i: 0, s: 1, th: 0, z: 0 }], g, { pitch: 0 }); R.fit(); R.draw();
   { const su = printSetup(); $('hudA').textContent = t('hudPieces', { n: i + 1, a: faceText('upper', su), b: faceText('lower', su) }) + (!PR.labels || (a.placed && b.placed) ? '' : t('noLabelShort')) + (a.tagged || b.tagged ? t('tagNote') : ''); }
   $('btnPrev').textContent = t('back');
@@ -3148,7 +3283,7 @@ $('btnSeg').onclick = async () => {
       for (let i = a; i < b; i++) {
         btn.textContent = t('segProg', { s: q + 1, n: sp.n, i: i - a + 1, m: b - a });
         await new Promise(r => setTimeout(r, 0));
-        const eb = exportBase();
+        const eb = printBase();
         const g = Core.segmentFloor(eb.V, eb.F, geo.c, fl[i], k, PR.wall, geo.flat, fl[a].z, i > a ? 0.01 : 0, i < b - 1 ? 0.01 : 0, formReady() ? FORM.field : null, eb === baseMesh ? null : SIMP.idx);
         parts.push(g); nv += g.V.length; nf += g.F.length;
       }
@@ -3458,21 +3593,40 @@ const R = (() => {
   const overlay = { lines: true, cb: 0 };
   const evao = gl.createVertexArray(), evbo = gl.createBuffer();
 
+  // smooth shading: each corner takes the average normal of the faces around its point that bend less than
+  // ~40° from its own face (curved surfaces look smooth, the flat caps and the rims keep their sharp edges).
+  // Before this every triangle was shaded flat, so large triangles showed up as stripes.
+  const CREASE = Math.cos(40 * Math.PI / 180);
   function upload(g) {
     const { V, F, c } = g, SD = g.side;
-    const nt = F.length / 3;
-    const data = new Float32Array(nt * 21);
+    const nt = F.length / 3, nv = V.length / 3;
+    const FN = new Float32Array(nt * 3);
     for (let t = 0; t < nt; t++) {
       const a = F[t * 3] * 3, b = F[t * 3 + 1] * 3, d = F[t * 3 + 2] * 3;
       const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2];
       const wx = V[d] - V[a], wy = V[d + 1] - V[a + 1], wz = V[d + 2] - V[a + 2];
-      let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
-      const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
-      [a, b, d].forEach((i, k) => {
-        const o = t * 21 + k * 7;
-        data[o] = V[i] - c[0]; data[o + 1] = V[i + 1] - c[1]; data[o + 2] = V[i + 2] - c[2];
-        data[o + 3] = nx; data[o + 4] = ny; data[o + 5] = nz; data[o + 6] = SD ? SD[i / 3] : 1;
-      });
+      FN[t * 3] = uy * wz - uz * wy; FN[t * 3 + 1] = uz * wx - ux * wz; FN[t * 3 + 2] = ux * wy - uy * wx;   // area-weighted
+    }
+    const start = new Uint32Array(nv + 1);
+    for (let i = 0; i < F.length; i++) start[F[i] + 1]++;
+    for (let i = 0; i < nv; i++) start[i + 1] += start[i];
+    const list = new Uint32Array(F.length), fill = start.slice(0, nv);
+    for (let i = 0; i < F.length; i++) list[fill[F[i]]++] = (i / 3) | 0;
+    const data = new Float32Array(nt * 21);
+    for (let t = 0; t < nt; t++) {
+      const fx = FN[t * 3], fy = FN[t * 3 + 1], fz = FN[t * 3 + 2], fl = Math.hypot(fx, fy, fz) || 1;
+      for (let k = 0; k < 3; k++) {
+        const i = F[t * 3 + k], o = t * 21 + k * 7;
+        let nx = 0, ny = 0, nz = 0;
+        for (let j = start[i]; j < start[i + 1]; j++) {
+          const u = list[j], gx = FN[u * 3], gy = FN[u * 3 + 1], gz = FN[u * 3 + 2], gl2 = Math.hypot(gx, gy, gz) || 1;
+          if ((fx * gx + fy * gy + fz * gz) >= CREASE * fl * gl2) { nx += gx; ny += gy; nz += gz; }
+        }
+        const l = Math.hypot(nx, ny, nz);
+        if (l > 0) { nx /= l; ny /= l; nz /= l; } else { nx = fx / fl; ny = fy / fl; nz = fz / fl; }
+        data[o] = V[i * 3] - c[0]; data[o + 1] = V[i * 3 + 1] - c[1]; data[o + 2] = V[i * 3 + 2] - c[2];
+        data[o + 3] = nx; data[o + 4] = ny; data[o + 5] = nz; data[o + 6] = SD ? SD[i] : 1;
+      }
     }
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -3797,7 +3951,7 @@ function updateRead() {
 $('segLang').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLang(b.dataset.v); });
 setMode(MODE, true);
 applyStatic();
-window.__app = { S, Core, SNAP, PR, FORM, formReady, params, piecesFor, pieceByName, plateMesh, ensurePacked, printSetup, segPlan, get geo() { return geo; }, get base() { return baseMesh; }, loadBuffer, rebuild, unpackUnit, gunzip, STORE };
+window.__app = { S, Core, SNAP, PR, FORM, SIMP, R, get prevG() { return lastPrev; }, formReady, params, piecesFor, pieceByName, plateMesh, ensurePacked, printSetup, segPlan, get geo() { return geo; }, get base() { return baseMesh; }, loadBuffer, rebuild, unpackUnit, gunzip, STORE };
 renderChks();
 init();
 })();
