@@ -30,4 +30,17 @@ const Fr = F.slice(); for (let i = 0; i < 6; i += 3) { const t = Fr[i + 1]; Fr[i
 const r2 = M.repairBest(soup(V, Fr)); assert(r2.after.ok && r2.before.reversed > 0, 'reversed faces fixed');
 // a hole is closed
 const r3 = M.repairBest(soup(V.slice(0, 24), F.slice(0, 33))); assert(r3.after.ok && r3.holes === 1, 'hole closed');
-console.log('PASS: labels are closed solids, MeshFix splits shared edges, turns faces, closes holes; both pages carry the same MeshFix.');
+// 4. not an STL
+assert(!M.isSTL(new ArrayBuffer(10)) && !M.isSTL(new Uint8Array(200).fill(7).buffer), 'junk is not an STL');
+assert(M.isSTL(Core.meshSTL(Float64Array.from(V), Uint32Array.from(F), 'x')), 'binary STL recognised');
+// 5. simplifying a dense wavy sheet keeps its open edge and stays close to it
+(async () => {
+  const n = 120, Vs = [], Fs = [];
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { const x = i / n, y = j / n; Vs.push(x, y, 0.05 * Math.sin(6 * x) * Math.cos(5 * y)); }
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const a = j * (n + 1) + i; Fs.push(a, a + 1, a + n + 2, a, a + n + 2, a + n + 1); }
+  const A = { V: Float64Array.from(Vs), F: Uint32Array.from(Fs) }, B = await Core.simplifyMesh(A.V, A.F, { target: 2000 });
+  assert(B.V.length / 3 <= 2000, 'reached the target');
+  assert.strictEqual(Core.edgeStats(B.F, B.V.length / 3).boundary.length, 4 * n, 'open edge untouched');
+  const dev = await Core.meshDeviation(A, B); assert(dev < 0.004, 'stays close: ' + dev);
+  console.log('PASS: labels are closed solids, MeshFix splits shared edges, turns faces, closes holes, rejects non-STL; simplify keeps the open edge (deviation ' + dev.toFixed(4) + '); both pages carry the same MeshFix.');
+})();
