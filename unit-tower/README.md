@@ -71,6 +71,14 @@ Bambu Studio reads an STL by merging points with identical coordinates and compl
 - Known leftovers: catalogue 005 keeps 8 edges at the four-tile corner where side walls pass through each other (reported, slicing works). 001's centre axis (six sheets meeting at one point) shows up on plates only (points merge at plate coordinates) and is split during export.
 - `node unit-tower/test-meshfix.cjs` checks labels, repair and that both pages carry the same `MeshFix`.
 
+### Dense units and other fixes (after the full check, Nov 2026)
+
+- **Dense units** (more than 60 k points, e.g. catalogue 004 with 197 k): after loading, the surface is simplified in the background to about 40 k points (quadric edge collapse; open edges — top, bottom, seams — are never moved), and the two-way deviation is measured. Print pieces, segments and tower STL / OBJ / 3DM use the simplified surface while the deviation at the current print scale is at most 0.05 mm (004 at 1:105: 0.017 mm; checked independently), otherwise the full mesh with a note. 004: print ZIP about 150 MB instead of an estimated 1.5 GB, tower STL 159 MB instead of 753 MB, one piece in 0.3 s instead of 6 s. Exports wait (greyed, with progress) until it is done.
+- **Remembered choices**: manual scale, 保形 off / on and auto / manual are saved per model with the other parameters; they come back after a reload and when the same unit is sent again from the catalogue (the tower itself still starts fresh from the catalogue).
+- **Check lines stay true**: each result remembers what it was exported with; when wall, scale, placement or the tower change, the line goes back to the grey hint. Zero-area slivers from rounding are reported as tidied (grey), not as problems.
+- **Repair STL** runs in a background worker built from the page's own MeshFix code: the steps tick as they finish, the time is shown, it can be cancelled; files that are not STL are refused.
+- Piece sizes include the snap-off number tag once it is known that tags are used; opening 打印 always opens the piece preview, after 保形 / simplification finish if they are still running.
+
 ## From the minimal surface catalogue
 
 Both pages share a step bar: **‹ Catalogue · ① Unit ② Tower ③ Print**. In the catalogue (`../minimal-surfaces/`), **Use as tower unit →** stores the current unit (open mid-surface with its placement and mirror array, Z up, scaled so one unit = one 3.6 m floor) in this browser and opens this page, which loads it with clear height 0. The twist is set to the first angle where floors join, and a unit card shows its thumbnail and parameters with a link back.
