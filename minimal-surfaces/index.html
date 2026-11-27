@@ -168,6 +168,14 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-of
 .dock button:hover{background:rgba(255,255,255,.08)}
 .dock button.on{color:#0b0d10;background:var(--acc)}
 .dock svg{width:20px;height:20px}
+.defb{margin-top:10px;background:none;border:0;padding:0;color:var(--mute);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.defb:hover:not(:disabled){color:var(--acc)}.defb:disabled{opacity:.35;cursor:default;text-decoration:none}
+.busy{position:absolute;inset:0;background:rgba(0,0,0,.38);display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:none;transition:opacity .15s}
+.busy.hidden{opacity:0}
+.busy .pill{display:flex;gap:12px;align-items:center;background:var(--glass);border:1px solid var(--line);border-radius:999px;padding:12px 22px;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.busy b{display:block;font-size:14px;font-weight:500}.busy small{display:block;color:var(--mute);font-size:11.5px;margin-top:2px}
+.busy .spin{width:22px;height:22px;border-radius:50%;border:2.5px solid rgba(255,255,255,.18);border-top-color:var(--acc);animation:spn .9s linear infinite;flex:none}
+@keyframes spn{to{transform:rotate(360deg)}}
 .toast{position:fixed;left:50%;bottom:86px;transform:translate(-50%,8px);background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @media(max-width:899px){
@@ -216,6 +224,7 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-of
     <div class="shead">
       <b id="v-name"></b><span id="v-sub"></span>
       <div class="chips" id="chips"></div>
+      <button type="button" class="defb" id="b-defaults" disabled><span data-i18n="恢复默认">恢复默认</span></button>
     </div>
     <div class="sbody" id="rows"></div>
     <div class="sfoot">
@@ -229,6 +238,7 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-of
   </aside>
   <section class="stage" id="stage">
     <canvas id="c" tabindex="0"></canvas>
+    <div class="busy hidden" id="busy" aria-live="polite"><div class="pill"><i class="spin"></i><div><b id="busyT"></b><small id="busyS"></small></div></div></div>
     <img id="ref" alt="">
     <div class="hint" data-i18n="拖动旋转 · 滚轮缩放 · 双击回到原图视角">拖动旋转 · 滚轮缩放 · 双击回到原图视角</div>
     <button type="button" class="sidebtn" id="b-side" aria-expanded="true" aria-controls="side"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M6 3v10"/></svg><span>收起侧栏</span></button>
@@ -364,6 +374,9 @@ const EN = {
   '导出时按拓竹读文件的方式检查一遍，有问题当场修好':'Each export is checked the way Bambu Studio reads it and fixed on the spot',
   '拓竹检查通过':'Bambu check passed', '0 非流形边 · 0 破洞 · 法向一致 · {n} 个三角面':'0 non-manifold edges · 0 holes · normals agree · {n} triangles',
   '发现 {k} 处，导出时已自动修好':'{k} problems found, fixed during export', '拆开 {e} 条共用边 · 翻正 {f} 处法向':'{e} shared edges split · {f} normals turned',
+  '恢复默认':'Restore defaults', '已恢复默认':'Defaults restored', '已记住的参数':'Remembered settings',
+  '计算中… 约 {n} 万面':'Computing… about {n}0k faces', '上次用了 {s} 秒':'last time {s} s', '松手后计算':'computes when you let go',
+  '竖向叠加时组合单独记一套（现在是空的）；关掉叠加，原来的组合会回来':'Stacking keeps its own combination (empty for now); turn stacking off and the earlier one comes back',
   '清理了 {n} 个零面积小三角形（精度造成的，不算问题）':'{n} zero-area slivers tidied (rounding, not a defect)',
   '还有 {k} 处没拆开（多在曲面的尖角上）；拓竹会提示，可以照常切片':'{k} spots could not be separated (mostly at sharp corners of the surface); Bambu Studio will warn, slicing works as usual', '导出失败，请重试':'Export failed — please try again'
 };
@@ -1812,15 +1825,19 @@ function setGroupMatrix(){
 }
 
 function rebuild(){
+  const t0 = performance.now();
   let res = P.fl > 0 ? towerBuild(S, P) : S.build(P);
   if (!res){ toast('这组参数下周期条件无解，换一个扭转值试试'); return; }
   res = comboBuild(res);
   cur = res; cur.raw = res.pos.slice(); cur.rawIdx = res.idx; cur._rawBase = res._rb || null;
   applyPlacement(); faceFlags(); updatePlaceUI();
   show(); chkIdle();
+  lastMs = performance.now() - t0; lastTris = cur.idx.length / 3;
+  saveP();
 }
 // 显示：厚度为 0 时画中面；厚度 > 0 时画加厚后的实体（上下两层 + 侧边），与导出的 STL 一致
 function show(){
+  const t0 = performance.now();
   chkIdle();   // 参数一改，上次导出的检查结果就不算数了
   const g = new THREE.BufferGeometry(), lg = new THREE.BufferGeometry();
   let rimG = null;
@@ -1865,6 +1882,7 @@ function show(){
   if (dir.lengthSq() > 0 && radius > 0) camera.position.copy(controls.target).add(dir.multiplyScalar(newR/radius));
   radius = newR;
   camera.near = radius/100; camera.far = radius*40; camera.updateProjectionMatrix();
+  showMs = performance.now() - t0; saveP();
   $('#stat').textContent = `${T('{n} 个三角面', {n:(cur.idx.length/3).toLocaleString(lang === 'en' ? 'en' : 'zh')})} · ${Math.round(s.x*MM)} × ${Math.round(s.z*MM)} × ${Math.round(s.y*MM)} mm${cur.R ? ' · R = '+cur.R.toFixed(4) : ''}${cur.note && P.fl > 0 ? ' · '+cur.note : ''}${cur.cmult ? ' · '+T('组合 ×{n}', {n:cur.cmult}) : ''}`;
   updateGroups();
 }
@@ -1884,30 +1902,100 @@ function refView(){
   camera.updateProjectionMatrix(); controls.update();
 }
 function setTitle(){ if (!S) return; const st = $('#st1s'); if (st) st.textContent = S.no + ' · ' + T(S.name); $('#v-name').textContent = S.no + ' · ' + T(S.name); $('#v-sub').textContent = T(S.zh); $('#c').setAttribute('aria-label', T('{name} 极小曲面三维预览，拖动旋转，滚轮缩放', {name:T(S.name)})); }
-// 周期数不跟预设走：打开时默认 1 个周期，换预设也保持当前周期数
+// ---------- ⑥ 每个曲面记住自己的参数（刷新、关掉再开都在）；「恢复默认」回到初始 ----------
+// 周期数不跟预设走：第一次打开默认 1 个周期，换预设也保持当前周期数
+const PKEY = 'ms-params';
+function readSaved(){ try { return JSON.parse(localStorage.getItem(PKEY) || '{}') || {}; } catch (e) { return {}; } }
+function defaultsFor(x){
+  const D = {...x.preset, mir: !!x.pov}; if (hasN(x)) D.n = 1;
+  for (const [k,,,,,,d] of SHARED) if (D[k] === undefined) D[k] = d;
+  for (const [k,,mn] of x.spec) if (D[k] === undefined) D[k] = mn;
+  return Object.assign(D, {pf: -1, pmr: 0, prt: 0, pg: 1, pc: 1, cf: [], cn: 2, cx: 25, cs: 1});
+}
+function isDefault(){
+  if (!S) return true;
+  const D = defaultsFor(S);
+  if (P._cfT && P._cfT.cf && P._cfT.cf.length) return false;
+  return Object.keys(D).every(k => k === 'name' || JSON.stringify(P[k]) === JSON.stringify(D[k]));
+}
+function updateDefaultsBtn(){ const b = $('#b-defaults'); if (b) b.disabled = isDefault(); }
+let saveTimer = 0;
+function saveP(){
+  if (!S) return;
+  const id = S.id, snap = JSON.parse(JSON.stringify(P));
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const all = readSaved();
+    if (S && S.id === id && isDefault()) delete all[id]; else all[id] = {at: Date.now(), P: snap};
+    for (const k of Object.keys(all).sort((a, b) => all[b].at - all[a].at).slice(30)) delete all[k];
+    try { localStorage.setItem(PKEY, JSON.stringify(all)); } catch (e) {}
+  }, 250);
+  updateDefaultsBtn();
+}
 function openSurface(x){
   if (S !== x){
-    S = x; P = {...x.preset, mir: !!x.pov}; if (hasN(x)) P.n = 1; for (const [k,,,,,,d] of SHARED) if (P[k] === undefined) P[k] = d;
-    for (const [k,,mn] of x.spec) if (P[k] === undefined) P[k] = mn;
-    Object.assign(P, {pf: -1, pmr: 0, prt: 0, pg: 1, pc: 1, cf: [], cn: 2, cx: 25, cs: 1}); delete P._pl;
+    S = x;
+    const D = defaultsFor(x), sv = readSaved()[x.id];
+    P = sv && sv.P ? Object.assign(D, sv.P) : D;
+    for (const [k,,mn,mx] of specAll()) if (typeof P[k] !== 'number' || !isFinite(P[k])) P[k] = defaultsFor(x)[k]; else P[k] = Math.min(mx, Math.max(mn, P[k]));
+    if (!(P.fl > 0)) delete P._pl;
+    if (S.clamp) S.clamp(P);
+    cur = null;   // the previous surface's model must not drive this one's panel (remembered combinations point at its faces)
     applyPalette();
     setupPanel(); syncUI(); radius = 0; rebuild();
   }
-  setTitle();
+  setTitle(); updateDefaultsBtn();
   resize(); refView();
 }
 
-// 竖向叠加只能上下翻转：打开时把已选的侧面落地 / 绕竖轴旋转暂存并回到原样，关掉时恢复
-function flChanged(prev){
-  if (!prev && P.fl > 0 && (P.pf >= 2 || P.prt)){ P._pl = {pf:P.pf, prt:P.prt}; P.pf = -1; P.prt = 0; }
-  else if (prev > 0 && !P.fl && P._pl){ Object.assign(P, P._pl); delete P._pl; }
+// ---------- ⑦「计算中…」：上一次算得慢（> 0.4 秒）就先显示提示再算；很重的滑杆拖动时只改数字，松手再算 ----------
+let lastMs = 0, lastTris = 0, showMs = 0;
+const HEAVY = 400;
+const heavy = k => (k === 't' ? showMs : lastMs) > HEAVY;
+function busyShow(){
+  $('#busyT').textContent = T('计算中… 约 {n} 万面', {n: Math.max(1, Math.round(lastTris / 1e4))});
+  $('#busyS').textContent = T('上次用了 {s} 秒', {s: (lastMs / 1000).toFixed(1)});
+  $('#busy').classList.remove('hidden');
 }
-function setFl(v){ const prev = P.fl; P.fl = v; flChanged(prev); syncUI(); rebuild(); setGroupMatrix(); refView(); }
+function busyHide(){ $('#busy').classList.add('hidden'); }
+// run fn at once when the last run was quick; when it was slow, show the notice first, run once it is on screen
+function withBusy(fn, k){
+  if (!heavy(k)){ fn(); return; }
+  busyShow();
+  requestAnimationFrame(() => setTimeout(() => { try { fn(); } finally { busyHide(); } }, 0));
+}
+
+// 竖向叠加只能上下翻转：打开时把已选的侧面落地 / 绕竖轴旋转暂存并回到原样，关掉时恢复
+// ⑤ 组合也分两套：不叠高一套、叠高一套（叠高会把曲面转个方向再往上叠，同一面会跑到别处），互不影响
+function flChanged(prev){
+  if (!prev && P.fl > 0){
+    if (P.pf >= 2 || P.prt){ P._pl = {pf:P.pf, prt:P.prt}; P.pf = -1; P.prt = 0; }
+    const had = (P.cf || []).length;
+    P._cfF = {cf: (P.cf || []).slice(), cn: P.cn};
+    if (had && !P._cfT) toast('竖向叠加时组合单独记一套（现在是空的）；关掉叠加，原来的组合会回来');
+    const tw = P._cfT || {cf: [], cn: 2}; P.cf = tw.cf.slice(); P.cn = tw.cn;
+  } else if (prev > 0 && !P.fl){
+    if (P._pl){ Object.assign(P, P._pl); delete P._pl; }
+    P._cfT = {cf: (P.cf || []).slice(), cn: P.cn};
+    const fl = P._cfF || {cf: [], cn: 2}; P.cf = fl.cf.slice(); P.cn = fl.cn;
+  }
+}
+function setFl(v){ const prev = P.fl; P.fl = v; flChanged(prev); syncUI(); withBusy(() => { rebuild(); setGroupMatrix(); refView(); }); }
 let pending = false;
 let scheduleView = false, wasTower = false;
-function schedule(){ if (!pending){ pending = true; requestAnimationFrame(() => { pending = false; rebuild(); const t = P.fl > 0; if (scheduleView && t !== wasTower){ setGroupMatrix(); refView(); } wasTower = t; scheduleView = false; }); } }
+function schedule(){
+  if (pending) return;
+  pending = true;
+  const go = () => { pending = false; try { rebuild(); const t = P.fl > 0; if (scheduleView && t !== wasTower){ setGroupMatrix(); refView(); } wasTower = t; scheduleView = false; } finally { busyHide(); } };
+  if (heavy()){ busyShow(); requestAnimationFrame(() => setTimeout(go, 0)); } else requestAnimationFrame(go);
+}
 let pendingShow = false;
-function scheduleShow(){ if (!pendingShow){ pendingShow = true; requestAnimationFrame(() => { pendingShow = false; if (cur) show(); }); } }
+function scheduleShow(){
+  if (pendingShow) return;
+  pendingShow = true;
+  const go = () => { pendingShow = false; try { if (cur) show(); } finally { busyHide(); } };
+  if (heavy('t')){ busyShow(); requestAnimationFrame(() => setTimeout(go, 0)); } else requestAnimationFrame(go);
+}
 
 $('#rows').addEventListener('click', e => {
   const sw = e.target.closest('#themes .swc');
@@ -1924,7 +2012,7 @@ $('#rows').addEventListener('click', e => {
       if (j >= 0) cf.splice(j, 1);
       else { const k = cf.findIndex(f => CFACE[f][0] === CFACE[rf][0]); if (k >= 0) cf[k] = rf; else { if (cf.length >= 2) cf.pop(); cf.push(rf); } }
       P.cf = cf; }
-    rebuild(); setGroupMatrix(); refView(); return;
+    withBusy(() => { rebuild(); setGroupMatrix(); refView(); }); return;
   }
   if (b.dataset.f !== undefined) P.pf = +b.dataset.f;
   else if (b.dataset.a === 'flip') P.pf = opp[Math.max(0, P.pf)];
@@ -1932,23 +2020,42 @@ $('#rows').addEventListener('click', e => {
   else if (b.dataset.a === 'rot') P.prt = ((P.prt || 0) + 1) % 4;
   applyPlacement(); updatePlaceUI(); show(); setGroupMatrix(); refView();
 });
+function runKey(k, prevV){
+  if (k === 't'){ scheduleShow(); return; }
+  if (k === 'fl'){ flChanged(prevV); updatePlaceUI(); schedule(); scheduleView = true; return; }
+  if (k === 'ori'){ if (P.fl > 0){ schedule(); } else saveP(); return; }
+  schedule();
+}
+let defer = null;   // a heavy slider being dragged: {k, prev} — computed once on release
 $('#side').addEventListener('input', e => {
   const k = e.target.dataset.k; if (!k) return;
   const prevV = P[k];
   P[k] = +e.target.value; if (S.clamp) S.clamp(P); syncUI();
-  if (k === 'op'){ $('#ref').style.opacity = P.op/100; return; }
-  if (k === 't'){ scheduleShow(); return; }
-  if (k === 'fl'){ flChanged(prevV); updatePlaceUI(); schedule(); scheduleView = true; return; }
-  if (k === 'ori'){ if (P.fl > 0){ schedule(); } return; }
-  schedule();
+  if (k === 'op'){ $('#ref').style.opacity = P.op/100; saveP(); return; }
+  if (heavy(k) && e.target.type === 'range'){
+    if (!defer || defer.k !== k){ if (defer) runKey(defer.k, defer.prev); defer = {k, prev: prevV}; toast('松手后计算'); }
+    return;
+  }
+  runKey(k, prevV);
+});
+$('#side').addEventListener('change', e => {
+  const k = e.target.dataset.k; if (!k || !defer || defer.k !== k) return;
+  const d = defer; defer = null; runKey(d.k, d.prev);
 });
 $('#chips').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.id === 'b-mir'){ P.mir = !P.mir; syncUI(); setGroupMatrix(); refView(); return; }
+  if (b.id === 'b-mir'){ P.mir = !P.mir; syncUI(); setGroupMatrix(); refView(); saveP(); return; }
   { const p = S.presets[+b.dataset.i]; Object.assign(P, p); if (hasN(S) && !isOrig(p)) P.n = 1; }
-  applyPalette(); syncUI(); rebuild(); refView();
+  applyPalette(); syncUI(); withBusy(() => { rebuild(); refView(); });
 });
 $('#b-reset').addEventListener('click', refView);
+$('#b-defaults').addEventListener('click', () => {
+  if (!S) return;
+  P = defaultsFor(S); defer = null;
+  const all = readSaved(); delete all[S.id]; try { localStorage.setItem(PKEY, JSON.stringify(all)); } catch (e) {}
+  applyPalette(); setupPanel(); syncUI(); radius = 0;
+  withBusy(() => { rebuild(); setGroupMatrix(); refView(); toast('已恢复默认'); });
+});
 $('#b-wire').addEventListener('click', e => {
   wire = !wire; if (group){ const w = group.getObjectByName('wire'); if (w) w.visible = wire; }
   const b = e.currentTarget; b.classList.toggle('on', wire); b.setAttribute('aria-pressed', wire);
@@ -2215,6 +2322,8 @@ function route(){
   if (x) openSurface(x); else window.scrollTo(0, 0);
 }
 addEventListener('hashchange', route);
+// test hook (read-only views of the current state)
+window.__ms = { get P(){ return P; }, get S(){ return S; }, get cur(){ return cur; }, get lastMs(){ return lastMs; }, get lastTris(){ return lastTris; } };
 resize(); route();
 (function loop(){
   requestAnimationFrame(loop);
